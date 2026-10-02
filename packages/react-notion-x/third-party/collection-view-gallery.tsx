@@ -35,7 +35,8 @@ export const CollectionViewGallery: React.FC<CollectionViewProps> = ({
 function Gallery({ blockIds, collectionView, collection }) {
   const { recordMap } = useNotionContext();
   const {
-    gallery_cover = { type: 'none' },
+    // 노션 API로 만든 보기는 gallery_cover가 비어 있으므로 기본값을 페이지 커버로 한다
+    gallery_cover = { type: 'page_cover' },
     gallery_cover_size = 'medium',
     gallery_cover_aspect = 'cover',
   } = collectionView.format || {};

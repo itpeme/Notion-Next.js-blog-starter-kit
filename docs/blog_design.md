@@ -221,3 +221,16 @@
 카테고리 페이지: 대분류 14개 각각 제목(`## SAP` 등) + 연결된 보기(목록, `상태 = 공개` AND `카테고리 = 대분류`, 표시 `하위 카테고리·Published`). 카테고리나 소개가 늘면 같은 방식으로 보기를 추가한다. 노션의 그룹(GROUP BY) 보기는 이 포크의 비공식 API 조회가 400 오류를 내서 사용하지 않는다.
 
 코드 변경: 메뉴용 페이지 캐시 5분 TTL + 현재 페이지 데이터 우선 병합 ([lib/notion.ts](../lib/notion.ts)), 목록 위 DB 이름("글") 숨김 ([styles/custom/notion.scss](../styles/custom/notion.scss)).
+
+## 13-3. 화면 디자인 1단계 (구현 완료)
+
+참고: toss.tech의 구성(상단 헤더, 카드형 글 목록, 넓은 푸터). **로고·문구·이미지·전용 글꼴은 사용하지 않고** 레이아웃 아이디어만 참고했다.
+
+- 글꼴: Pretendard(무료, OFL)를 CDN으로 불러오고 기존 Spoqa, Tossface를 뒤에 둔다. (`styles/custom/design.scss`의 `--notion-font`)
+- 강조색 `--primary-color`, 폭 `--site-content-width`, 카드 둥근 정도 `--card-radius` 등은 `design.scss` 맨 위 변수에서 바꾼다.
+- 헤더: 블로그 이름(텍스트 로고) + 메뉴(카테고리·소개·문의) + 다크모드·검색. 처리방침은 푸터로 이동.
+- 홈: 큰 제목과 설명, 3열 카드 목록(커버 16:9, 카테고리 배지, 제목, 두 줄 설명, 날짜), 모바일 1열. 제목이 없는 행은 숨김.
+- 글 페이지: 큰 제목, 본문 글자 크기·줄 간격 조정, 발행일을 한국어 형식으로 표시, 속성 중 `Slug` 숨김.
+- 푸터: 이름·설명, 링크(`site.config.ts`의 `footerLinks` + RSS + GitHub), 저작권.
+- 카드에 커버를 보이게 하려고 갤러리 기본값을 페이지 커버로 했다 ([collection-view-gallery.tsx](../packages/react-notion-x/third-party/collection-view-gallery.tsx)). 노션 API로 만든 보기는 커버 설정이 비어 있기 때문이다.
+- 이후(2단계 후보): 추천글 캐러셀, 인기글(수동 지정), 시리즈.

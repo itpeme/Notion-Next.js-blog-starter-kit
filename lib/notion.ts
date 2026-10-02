@@ -4,7 +4,12 @@ import ExpiryMap from 'expiry-map';
 import pMap from 'p-map';
 import pMemoize from 'p-memoize';
 
-import { isPreviewImageSupportEnabled, navigationStyle, navigationLinks } from './config';
+import {
+  isPreviewImageSupportEnabled,
+  navigationStyle,
+  navigationLinks,
+  footerLinks,
+} from './config';
 import { getHiddenPageIds } from './get-site-map';
 import { notion } from './notion-api';
 import { getPreviewImageMap } from './preview-images';
@@ -14,7 +19,14 @@ const NAVIGATION_PAGES_TTL = 5 * 60 * 1000;
 
 const getNavigationLinkPages = pMemoize(
   async (): Promise<ExtendedRecordMap[]> => {
-    const navigationLinkPageIds = (navigationLinks || []).map(link => link.pageId).filter(Boolean);
+    // 메뉴와 푸터에 연결된 페이지의 제목·URL 정보를 함께 불러온다 (중복 제거)
+    const navigationLinkPageIds = Array.from(
+      new Set(
+        [...(navigationLinks || []), ...(footerLinks || [])]
+          .map(link => link?.pageId)
+          .filter(Boolean),
+      ),
+    );
 
     if (navigationStyle !== 'default' && navigationLinkPageIds.length) {
       return pMap(

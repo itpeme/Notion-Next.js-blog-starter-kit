@@ -1,0 +1,339 @@
+/**
+ * ================ 블로그 디자인 (헤더 · 홈 카드 목록 · 글 · 푸터) ================
+ * notion.scss 뒤에 불러오므로 같은 선택자는 이 파일이 우선한다.
+ * 색과 글꼴을 바꾸고 싶으면 아래 변수만 수정하면 된다.
+ */
+:root {
+  // 글꼴: Pretendard(무료, OFL) → 기존 Spoqa → 이모지(Tossface) → 시스템 순서
+  --notion-font: 'Pretendard Variable', Pretendard, 'SpoqaHanSansNeo', 'Tossface', -apple-system,
+    BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
+
+  --primary-color: #4f5bd5; // 강조색
+  --select-color-0: var(--primary-color);
+  --select-color-1: var(--primary-color);
+
+  --site-content-width: 1120px; // 홈 · 푸터 폭
+  --card-radius: 16px;
+  --heading-color: #191f28;
+  --muted-color: #6b7684;
+  --card-border: rgba(0, 0, 0, 0.08);
+}
+
+.dark-mode {
+  --heading-color: rgba(255, 255, 255, 0.95);
+  --muted-color: rgba(255, 255, 255, 0.55);
+  --card-border: rgba(255, 255, 255, 0.1);
+}
+
+// 목록이 있는 페이지도 흰 배경으로 (기존: 연한 회색)
+body:not(.dark-mode) .hasCollectionView {
+  --bg-color: #ffffff;
+}
+
+/**
+ * ---------------- 헤더 ----------------
+ */
+body .notion-header {
+  background: var(--bg-color);
+  border-bottom: 1px solid var(--card-border);
+
+  .notion-nav-header {
+    max-width: var(--site-content-width);
+    padding: 0 24px;
+    box-sizing: border-box;
+  }
+
+  .site-logo {
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--heading-color);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .breadcrumb.button {
+    font-weight: 600;
+    color: var(--fg-color);
+    border-radius: 8px;
+
+    &:hover {
+      background: var(--bg-color-2);
+    }
+  }
+}
+
+/**
+ * ---------------- 홈 ----------------
+ */
+.notion.indexPage {
+  .notion-page.index-page {
+    max-width: var(--site-content-width);
+    margin: 0 auto;
+    padding: 112px 24px 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .notion-page-no-cover {
+    margin-top: 0 !important;
+  }
+
+  // 제목 영역: 아이콘은 쓰지 않고 텍스트 중심으로 보여준다
+  .notion-page-icon-hero {
+    display: none;
+  }
+
+  .notion-title {
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.25;
+    color: var(--heading-color);
+    margin: 0 0 8px;
+    text-align: left;
+  }
+
+  .notion-page-content-inner > .notion-text {
+    font-size: 1.1rem;
+    color: var(--muted-color);
+    margin-bottom: 8px;
+  }
+
+  // 홈 하단의 하위 페이지 링크(카테고리/소개/처리방침)는 메뉴와 푸터에 있으므로 숨김
+  .notion-page-content-inner > .notion-page-link {
+    display: none;
+  }
+
+  .notion-page-content {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+// 글 카드 목록
+.notion .postListWrap {
+  margin-top: 1.5rem;
+}
+
+.notion .postList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 40px 24px;
+  margin-top: 0;
+
+  > a.notion-collection-card {
+    width: auto;
+    margin: 0 !important;
+    background: var(--bg-color);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    box-shadow: none;
+    overflow: hidden;
+    transition: transform 200ms ease, box-shadow 200ms ease;
+
+    &:hover {
+      background: var(--bg-color);
+      transform: translateY(-4px);
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.1);
+    }
+
+    // 제목이 비어 있는 행(새로 만들다 만 글)은 숨김
+    &:not(:has(.notion-page-title-text)) {
+      display: none;
+    }
+
+    .notion-collection-card-cover {
+      height: auto;
+      aspect-ratio: 16 / 9;
+      border-bottom: none;
+      background: linear-gradient(135deg, var(--bg-color-1), var(--bg-color-2));
+
+      span,
+      img {
+        height: 100% !important;
+        width: 100% !important;
+        object-fit: cover;
+      }
+    }
+
+    .notion-collection-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 20px 20px 22px;
+    }
+
+    .notion-collection-card-property {
+      margin: 0;
+      padding: 0;
+      height: auto !important; // 기존 스타일의 2번째 속성 고정 높이 제거
+      overflow: visible;
+    }
+
+    // 카테고리 배지를 제목 위로
+    .notion-collection-card-property:has(.notion-property-select) {
+      order: -1;
+    }
+
+    // 제목
+    .notion-property-title .notion-page-title-text {
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1.45;
+      letter-spacing: -0.02em;
+      color: var(--heading-color);
+      white-space: normal;
+      border-bottom: none;
+    }
+
+    .notion-property-title .notion-page-icon-inline {
+      display: none;
+    }
+
+    // 설명 (두 줄까지)
+    .notion-property-text {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      color: var(--muted-color);
+      white-space: normal;
+    }
+
+    // 카테고리 배지
+    .notion-property-select-item {
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 6px;
+      margin: 0;
+    }
+
+    // 날짜
+    .notion-property-date {
+      font-size: 0.85rem;
+      color: var(--muted-color);
+    }
+
+    // 비어 있는 속성은 숨김
+    .notion-collection-card-property:empty,
+    .notion-collection-card-property:has(.notion-property:empty) {
+      display: none;
+    }
+  }
+}
+
+@media only screen and (max-width: 960px) {
+  .notion .postList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media only screen and (max-width: 640px) {
+  .notion .postList {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .notion.indexPage .notion-title {
+    font-size: 1.9rem;
+  }
+}
+
+/**
+ * ---------------- 글(상세) 페이지 ----------------
+ */
+.notion.childPage {
+  .notion-title {
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.3;
+    color: var(--heading-color);
+  }
+
+  .notion-text,
+  .notion-list,
+  .notion-quote,
+  .notion-callout {
+    font-size: 1.0625rem;
+    line-height: 1.85;
+  }
+
+  .notion-text {
+    letter-spacing: -0.005em;
+  }
+
+  .notion-asset-wrapper img,
+  .notion-asset-wrapper span {
+    border-radius: 12px;
+  }
+}
+
+@media only screen and (max-width: 640px) {
+  .notion.childPage .notion-title {
+    font-size: 1.8rem;
+  }
+}
+
+/**
+ * ---------------- 푸터 ----------------
+ */
+.site-footer {
+  width: 100%;
+  align-self: stretch;
+  margin-top: 96px;
+  border-top: 1px solid var(--card-border);
+  background: var(--bg-color);
+  color: var(--muted-color);
+  font-size: 0.9rem;
+
+  .site-footer-inner {
+    max-width: var(--site-content-width);
+    margin: 0 auto;
+    padding: 40px 24px 56px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .site-footer-brand {
+    strong {
+      font-size: 1.05rem;
+      color: var(--heading-color);
+      letter-spacing: -0.02em;
+    }
+
+    p {
+      margin: 6px 0 0;
+      line-height: 1.6;
+    }
+  }
+
+  .site-footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+
+    a {
+      color: var(--fg-color);
+      font-weight: 600;
+      text-decoration: none;
+
+      &:hover {
+        color: var(--primary-color);
+      }
+    }
+  }
+
+  .site-footer-copyright {
+    font-size: 0.82rem;
+  }
+}

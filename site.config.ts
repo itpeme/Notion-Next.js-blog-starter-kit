@@ -64,10 +64,6 @@ export default siteConfig({
       pageId: '3ed45f955e1681599dc4c2b84149228c',
     },
     {
-      title: '개인정보처리방침',
-      pageId: '3ed45f955e16818ab938cfc8e4daa1d9',
-    },
-    {
       // 문의 폼 링크는 여기 한 곳에서만 관리 (다른 폼 서비스로 바꿀 때 이 URL만 교체)
       title: '문의',
       url: 'https://elastic-harp-7d4.notion.site/3ed45f955e1680a8b746e9dc2d1cd236',
@@ -79,13 +75,29 @@ export default siteConfig({
     },
   ],
 
+  // 푸터 링크 (페이지는 pageId, 외부 링크는 url)
+  footerLinks: [
+    {
+      title: '소개',
+      pageId: '3ed45f955e1681599dc4c2b84149228c',
+    },
+    {
+      title: '문의',
+      url: 'https://elastic-harp-7d4.notion.site/3ed45f955e1680a8b746e9dc2d1cd236',
+    },
+    {
+      title: '개인정보처리방침',
+      pageId: '3ed45f955e16818ab938cfc8e4daa1d9',
+    },
+  ],
+
   // -------- custom configs (2skydev) -------------
 
   // date-fns format string
   dateformat: 'yyyy년 MM월 dd일',
 
   // post page - hidden properties
-  hiddenPostProperties: ['설명', '상태', '최하위 정렬'],
+  hiddenPostProperties: ['설명', '상태', '최하위 정렬', 'Slug'],
 
   // contentPosition (table of contents) text align
   contentPositionTextAlign: 'left',

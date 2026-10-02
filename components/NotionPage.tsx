@@ -10,6 +10,7 @@ import TweetEmbed from 'react-tweet-embed';
 import { useSearchParam } from 'react-use';
 
 import cs from 'classnames';
+import { format, parseISO } from 'date-fns';
 import * as config from 'lib/config';
 import { mapImageUrl } from 'lib/map-image-url';
 import { getCanonicalPageUrl, mapPageUrl } from 'lib/map-page-url';
@@ -26,7 +27,7 @@ import { AdSenseScript, AdUnit, adsensePostSlot } from './AdSense';
 import Comments from './Comments';
 // components
 import { Loading } from './Loading';
-// import { Footer } from './Footer';
+import { Footer } from './Footer';
 import { NotionPageHeader, ToggleThemeButton } from './NotionPageHeader';
 import { Page404 } from './Page404';
 import { PageAside } from './PageAside';
@@ -115,9 +116,8 @@ const propertyDateValue = ({ data, schema, pageHeader }, defaultFn: () => React.
     const publishDate = data?.[0]?.[1]?.[0]?.[1]?.start_date;
 
     if (publishDate) {
-      return `Published ${formatDate(publishDate, {
-        month: 'long',
-      })}`;
+      // 'YYYY-MM-DD'를 로컬 날짜로 해석해 서버/브라우저 시간대 차이로 하루가 어긋나지 않게 한다
+      return format(parseISO(publishDate), config.dateformat);
     }
   }
 
@@ -271,7 +271,7 @@ export const NotionPage: React.FC<types.PageProps> = ({
             </>
           ) : null
         }
-        footer={null}
+        footer={isLiteMode ? null : <Footer mapPageUrl={siteMapPageUrl} />}
       />
     </>
   );

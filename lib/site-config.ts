@@ -32,6 +32,7 @@ export interface SiteConfig {
 
   navigationStyle?: types.NavigationStyle;
   navigationLinks?: Array<NavigationLink>;
+  footerLinks?: Array<NavigationLink>;
 
   // custom configs (2skydev)
   dateformat: string;
