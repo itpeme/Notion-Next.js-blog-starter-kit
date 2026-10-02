@@ -70,13 +70,21 @@ export class NotionAPI {
     // CUSTOM: 작성자 유저 정보 가져오도록 처리
     const pageBlockId = Object.keys(recordMap.block)[0];
     const pageBlock = recordMap.block[pageBlockId].value;
+    // 비로그인 공개 조회에서는 created_by_id가 내려오지 않을 수 있으므로 있을 때만 조회
     const authorId = pageBlock.created_by_id;
-    const users = await this.getUsers([authorId]);
-    const author = users.results[0];
 
-    recordMap.notion_user = {
-      [authorId]: author,
-    };
+    if (authorId) {
+      try {
+        const users = await this.getUsers([authorId]);
+        const author = users.results[0];
+
+        recordMap.notion_user = {
+          [authorId]: author,
+        };
+      } catch (err) {
+        console.warn('NotionAPI getUsers error', pageId, err.message);
+      }
+    }
 
     // ensure that all top-level maps exist
     recordMap.collection = recordMap.collection ?? {};
@@ -564,7 +572,9 @@ export class NotionAPI {
     gotOptions?: OptionsOfJSONResponseBody;
     headers?: any;
   }): Promise<T> {
+    // Notion이 got 기본 User-Agent를 403으로 차단하므로 식별 가능한 UA를 기본값으로 사용
     const headers: any = {
+      'user-agent': 'itpe-blog/1.0 (+https://itpe.me)',
       ...clientHeaders,
       ...gotOptions?.headers,
       'Content-Type': 'application/json',
@@ -580,7 +590,7 @@ export class NotionAPI {
 
     const url = `${this._apiBaseUrl}/${endpoint}`;
 
-    return got
+    const response = await got
       .post(url, {
         ...gotOptions,
         retry: {
@@ -590,6 +600,37 @@ export class NotionAPI {
         json: body,
         headers,
       })
-      .json();
+      .json<T>();
+
+    return normalizeRecordMapValues(response);
   }
+}
+
+/**
+ * Notion 비공식 API가 recordMap의 각 항목을 `{ value: { value, role } }` 형태로 한 번 더
+ * 감싸서 내려주는 변경에 대응한다. 기존 코드가 기대하는 `{ role, value }`로 풀어준다.
+ */
+function normalizeRecordMapValues<T>(response: T): T {
+  const recordMap = (response as any)?.recordMap;
+
+  if (!recordMap || typeof recordMap !== 'object') {
+    return response;
+  }
+
+  for (const mapName of Object.keys(recordMap)) {
+    const map = recordMap[mapName];
+
+    if (!map || typeof map !== 'object') continue;
+
+    for (const key of Object.keys(map)) {
+      const entry = map[key];
+      const inner = entry?.value;
+
+      if (inner && typeof inner === 'object' && 'value' in inner && 'role' in inner) {
+        map[key] = { role: inner.role, value: inner.value };
+      }
+    }
+  }
+
+  return response;
 }
