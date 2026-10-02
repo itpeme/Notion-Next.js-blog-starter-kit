@@ -10,6 +10,26 @@
     margin-bottom: 2rem;
   }
 
+  // 봇 방지용 허니팟 입력란 (화면 밖으로 숨김)
+  .honeypot {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .turnstile {
+    margin-top: 0.75rem;
+  }
+
+  .error {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    color: #e03131;
+  }
+
   .items {
     display: flex;
     flex-direction: column;
