@@ -37,6 +37,33 @@ const getNavigationLinkPages = pMemoize(
   { cache: new ExpiryMap(NAVIGATION_PAGES_TTL), cacheKey: () => 'navigation-link-pages' },
 );
 
+const RECORD_MAP_KEYS = [
+  'block',
+  'collection',
+  'collection_view',
+  'notion_user',
+  'collection_query',
+  'signed_urls',
+  'preview_images',
+] as const;
+
+/**
+ * 지금 불러온 페이지 데이터(fresh)가 메뉴용 페이지 정보(캐시됨)보다 우선하도록 병합한다.
+ * 화면은 recordMap.block의 첫 번째 블록을 현재 페이지로 쓰므로 fresh의 키 순서를 앞에 유지한다.
+ */
+function mergeRecordMapsPreferFirst(
+  fresh: ExtendedRecordMap,
+  extra: ExtendedRecordMap,
+): ExtendedRecordMap {
+  const merged = mergeRecordMaps(extra, fresh);
+
+  for (const key of RECORD_MAP_KEYS) {
+    (merged as any)[key] = { ...(fresh as any)[key], ...(merged as any)[key] };
+  }
+
+  return merged;
+}
+
 export interface GetPageOptions {
   draftView?: boolean;
 }
@@ -54,9 +81,8 @@ export async function getPage(
     const navigationLinkRecordMaps = await getNavigationLinkPages();
 
     if (navigationLinkRecordMaps?.length) {
-      // 메뉴용 페이지 정보(캐시됨)보다 지금 불러온 페이지 데이터가 우선하도록 병합 순서를 둔다
       recordMap = navigationLinkRecordMaps.reduce(
-        (map, navigationLinkRecordMap) => mergeRecordMaps(navigationLinkRecordMap, map),
+        (map, navigationLinkRecordMap) => mergeRecordMapsPreferFirst(map, navigationLinkRecordMap),
         recordMap,
       );
     }
