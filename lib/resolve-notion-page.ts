@@ -6,6 +6,7 @@ import { pageUrlOverrides, pageUrlAdditions, environment, site } from './config'
 import { db } from './db';
 import { getSiteMap } from './get-site-map';
 import { getPage, GetPageOptions } from './notion';
+import { isHiddenPost, removeHiddenPostsFromCollections } from './post-status';
 
 export async function resolveNotionPage(
   domain: string,
@@ -83,6 +84,19 @@ export async function resolveNotionPage(
 
     recordMap = await getPage(pageId, options);
   }
+
+  // 게시 상태가 공개가 아닌 글은 URL(슬러그/ID)로 직접 접근해도 404
+  if (isHiddenPost(recordMap?.block?.[pageId]?.value, recordMap)) {
+    return {
+      error: {
+        message: `Not found "${rawPageId ?? pageId}"`,
+        statusCode: 404,
+      },
+    };
+  }
+
+  // 목록(컬렉션 뷰)과 페이지 데이터에서 비공개 글 제거
+  removeHiddenPostsFromCollections(recordMap);
 
   const props = { site, recordMap, pageId };
   return { ...props, ...(await acl.pageAcl(props)) };

@@ -44,6 +44,8 @@ export interface SiteMap {
   site: Site;
   pageMap: PageMap;
   canonicalPageMap: CanonicalPageMap;
+  // 비공개 처리된 글의 pageId 목록 (사이트맵·피드·검색에서 제외하는 데 사용)
+  hiddenPageIds?: string[];
 }
 
 export interface CanonicalPageMap {
