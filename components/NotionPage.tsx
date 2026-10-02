@@ -22,6 +22,7 @@ import { formatDate, getBlockTitle, getPageProperty } from 'notion-utils';
 
 import { loadPrismComponentsWithRetry } from '~/lib/load-prism-components';
 
+import { AdSenseScript, AdUnit, adsensePostSlot } from './AdSense';
 import Comments from './Comments';
 // components
 import { Loading } from './Loading';
@@ -239,6 +240,9 @@ export const NotionPage: React.FC<types.PageProps> = ({
       />
       {isLiteMode && <BodyClassName className="notion-lite" />}
 
+      {/* 광고는 콘텐츠가 있는 글 페이지에서만 로드 */}
+      {isBlogPost && !draftView && !isLiteMode && <AdSenseScript />}
+
       <NotionRenderer
         className={cs(isIndexPage ? 'indexPage' : 'childPage', { hasCollectionView })}
         bodyClassName={cs(styles.notion, isIndexPage && 'index-page')}
@@ -260,10 +264,11 @@ export const NotionPage: React.FC<types.PageProps> = ({
         searchNotion={config.isSearchEnabled ? searchNotion : null}
         pageAside={pageAside}
         pageFooter={
-          config.enableComment ? (
-            !isBlogPost ? null : (
-              <Comments pageId={pageId} recordMap={recordMap} />
-            )
+          isBlogPost ? (
+            <>
+              {adsensePostSlot && !draftView && <AdUnit key={pageId} slot={adsensePostSlot} />}
+              {config.enableComment && <Comments pageId={pageId} recordMap={recordMap} />}
+            </>
           ) : null
         }
         footer={null}
