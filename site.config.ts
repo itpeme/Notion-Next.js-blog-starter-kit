@@ -2,31 +2,31 @@ import { siteConfig } from './lib/site-config';
 
 export default siteConfig({
   // the site's root Notion page (required)
-  rootNotionPageId: 'd1e89e9e42eb4ebf9486ae0374039efc',
+  rootNotionPageId: '3ed45f955e1681c0bb2ede1030189d87',
 
   // if you want to restrict pages to a single notion workspace (optional)
   // (this should be a Notion ID; see the docs for how to extract this)
   rootNotionSpaceId: null,
 
   // basic site info (required)
-  name: '2skydev blog',
-  domain: 'blog.2skydev.com',
-  author: '2skydev',
+  name: '끊임없이 진화하라',
+  domain: 'itpe.me',
+  author: 'thinkmaniac',
+  language: 'ko',
 
   // open graph metadata (optional)
-  description: '2skydev blog - developer blog',
+  description: 'SAP, 제품리뷰, 테니스, 각종 팁을 공유합니다.',
 
   // social usernames (optional)
   // twitter: 'transitive_bs',
-  github: '2skydev',
+  github: 'itpeme',
   // linkedin: 'fisch2',
   // newsletter: '#', // optional newsletter URL
   // youtube: '#', // optional youtube channel name or `channel/UCGbXXXXXXXXXXXXXXXXXXXXXX`
 
   // default notion icon and cover images for site-wide consistency (optional)
   // page-specific values will override these site-wide defaults
-  defaultPageIcon:
-    'https://www.notion.so/image/https%3A%2F%2Fs3-us-west-2.amazonaws.com%2Fsecure.notion-static.com%2F0d2daa37-61d0-45b6-b333-9a2bd0bdc3ee%2Fprofile_%25E1%2584%2580%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AA%25E1%2584%258C%25E1%2585%25B5%25E1%2586%25AF_circle.png?table=block&id=d1e89e9e-42eb-4ebf-9486-ae0374039efc&spaceId=2eb5336b-2edb-42d0-bc6c-95d72d4d1b74&width=250&userId=bef10e95-202b-4b6b-9626-7af866b6f9ba&cache=v2',
+  defaultPageIcon: null,
   defaultPageCover: null,
   defaultPageCoverPosition: 0.5,
 
@@ -46,6 +46,9 @@ export default siteConfig({
   //   '/foo': '067dd719a912471ea9a3ac10710e7fdf',
   //   '/bar': '0be6efce9daf42688f65c76b89f8eb27'
   // }
+  // URL에 노션 ID를 붙이지 않고 Slug만 사용 (개발/운영 동일하게 동작)
+  includeNotionIdInUrls: false,
+
   pageUrlOverrides: null,
 
   // whether to use the default notion navigation style or a custom one with links to
@@ -54,11 +57,24 @@ export default siteConfig({
   navigationLinks: [
     {
       title: '카테고리',
-      pageId: '36400db511474331b5c1de6918212469',
+      pageId: '3ed45f955e168180bebef2a835ca6790',
+    },
+    {
+      title: '소개',
+      pageId: '3ed45f955e1681599dc4c2b84149228c',
+    },
+    {
+      title: '개인정보처리방침',
+      pageId: '3ed45f955e16818ab938cfc8e4daa1d9',
+    },
+    {
+      // 문의 폼 링크는 여기 한 곳에서만 관리 (다른 폼 서비스로 바꿀 때 이 URL만 교체)
+      title: '문의',
+      url: 'https://elastic-harp-7d4.notion.site/3ed45f955e1680a8b746e9dc2d1cd236',
     },
     {
       title: '카테고리',
-      pageId: '36400db511474331b5c1de6918212469',
+      pageId: '3ed45f955e168180bebef2a835ca6790',
       menuPage: true,
     },
   ],
@@ -78,5 +94,6 @@ export default siteConfig({
   defaultTheme: 'system',
 
   // enable comment
-  enableComment: true,
+  // 댓글 보강(페이지 검증, 스팸 방어) 완료 전까지 비활성화 - docs/blog_design.md §4
+  enableComment: false,
 });

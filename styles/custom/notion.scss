@@ -700,3 +700,8 @@ body {
     }
   }
 }
+
+// 데이터베이스(글 목록) 위에 붙는 DB 이름 제목("글")은 숨긴다 (보기 이름/제목은 페이지에서 따로 표시)
+.notion-collection-header {
+  display: none;
+}

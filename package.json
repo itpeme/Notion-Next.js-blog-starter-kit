@@ -4,26 +4,13 @@
   "private": true,
   "description": "The perfect starter kit for building beautiful websites with Next.js and Notion.",
   "author": {
-    "email": "2skydev@gmail.com",
-    "name": "2skydev",
-    "url": "https://github.com/2skydev"
+    "name": "thinkmaniac",
+    "url": "https://github.com/itpeme"
   },
-  "contributors": [
-    {
-      "email": "wmsttks@gmail.com",
-      "name": "yoonjihong",
-      "url": "https://github.com/yoonjihong"
-    },
-    {
-      "email": "webd200@gmail.com",
-      "name": "jong-hui",
-      "url": "https://github.com/jong-hui"
-    }
-  ],
-  "repository": "2skydev/blog",
+  "repository": "itpeme/Notion-Next.js-blog-starter-kit",
   "license": "MIT",
   "engines": {
-    "node": ">=16"
+    "node": ">=18.17"
   },
   "scripts": {
     "dev": "next dev",
