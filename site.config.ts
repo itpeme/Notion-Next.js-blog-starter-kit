@@ -66,7 +66,7 @@ export default siteConfig({
     {
       // 문의 폼 링크는 여기 한 곳에서만 관리 (다른 폼 서비스로 바꿀 때 이 URL만 교체)
       title: '문의',
-      url: 'https://elastic-harp-7d4.notion.site/3ed45f955e1680a8b746e9dc2d1cd236',
+      url: 'https://elastic-harp-7d4.notion.site/609b96b48a6b442d8bed3e340020cbab',
     },
     {
       title: '카테고리',
@@ -83,7 +83,7 @@ export default siteConfig({
     },
     {
       title: '문의',
-      url: 'https://elastic-harp-7d4.notion.site/3ed45f955e1680a8b746e9dc2d1cd236',
+      url: 'https://elastic-harp-7d4.notion.site/609b96b48a6b442d8bed3e340020cbab',
     },
     {
       title: '개인정보처리방침',

@@ -95,7 +95,7 @@
 
 - 담당자: thinkmaniac
 - 이메일: 【문의 이메일 주소】
-- 문의 폼: 【https://elastic-harp-7d4.notion.site/3ed45f955e1680a8b746e9dc2d1cd236】
+- 문의 폼: 【https://elastic-harp-7d4.notion.site/609b96b48a6b442d8bed3e340020cbab】
 
 개인정보 침해에 대한 신고나 상담이 필요하시면 아래 기관에 문의하실 수 있습니다.
 
