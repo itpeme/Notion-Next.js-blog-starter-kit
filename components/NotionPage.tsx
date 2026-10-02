@@ -12,6 +12,7 @@ import { useSearchParam } from 'react-use';
 import cs from 'classnames';
 import { format, parseISO } from 'date-fns';
 import * as config from 'lib/config';
+import { getFeaturedPosts, getHomePosts } from 'lib/home-posts';
 import { mapImageUrl } from 'lib/map-image-url';
 import { getCanonicalPageUrl, mapPageUrl } from 'lib/map-page-url';
 import { searchNotion } from 'lib/search-notion';
@@ -23,7 +24,9 @@ import { formatDate, getBlockTitle, getPageProperty } from 'notion-utils';
 
 import { loadPrismComponentsWithRetry } from '~/lib/load-prism-components';
 
-import { AdSenseScript, AdUnit, adsensePostSlot } from './AdSense';
+import { AdSenseScript, AdUnit, adsensePostSlot, adsenseSidebarSlot } from './AdSense';
+import { FeaturedCarousel } from './FeaturedCarousel';
+import { HomeSidebar } from './HomeSidebar';
 import Comments from './Comments';
 // components
 import { Loading } from './Loading';
@@ -178,6 +181,17 @@ export const NotionPage: React.FC<types.PageProps> = ({
     return mapPageUrl(site, recordMap, searchParams, draftView);
   }, [site, recordMap, lite, draftView]);
 
+  // 홈 화면 전용 데이터 (추천 슬라이드, 인기 글, 카테고리 목록)
+  const isHome = !!site && pageId === site.rootNotionPageId;
+  const homePosts = React.useMemo(
+    () => (isHome && recordMap ? getHomePosts(recordMap) : []),
+    [isHome, recordMap],
+  );
+  const categoryPageId = React.useMemo(
+    () => config.navigationLinks?.find(link => link?.pageId && link.title === '카테고리')?.pageId,
+    [],
+  );
+
   const keys = Object.keys(recordMap?.block || {});
   const block = recordMap?.block?.[keys[0]]?.value;
 
@@ -241,7 +255,9 @@ export const NotionPage: React.FC<types.PageProps> = ({
       {isLiteMode && <BodyClassName className="notion-lite" />}
 
       {/* 광고는 콘텐츠가 있는 글 페이지에서만 로드 */}
-      {isBlogPost && !draftView && !isLiteMode && <AdSenseScript />}
+      {(isBlogPost || (isHome && adsenseSidebarSlot)) && !draftView && !isLiteMode && (
+        <AdSenseScript />
+      )}
 
       <NotionRenderer
         className={cs(isIndexPage ? 'indexPage' : 'childPage', { hasCollectionView })}
@@ -263,8 +279,19 @@ export const NotionPage: React.FC<types.PageProps> = ({
         mapImageUrl={mapImageUrl}
         searchNotion={config.isSearchEnabled ? searchNotion : null}
         pageAside={pageAside}
+        pageHeader={
+          isHome ? (
+            <FeaturedCarousel posts={getFeaturedPosts(homePosts)} mapPageUrl={siteMapPageUrl} />
+          ) : undefined
+        }
         pageFooter={
-          isBlogPost ? (
+          isHome ? (
+            <HomeSidebar
+              posts={homePosts}
+              mapPageUrl={siteMapPageUrl}
+              categoryPageId={categoryPageId}
+            />
+          ) : isBlogPost ? (
             <>
               {adsensePostSlot && !draftView && <AdUnit key={pageId} slot={adsensePostSlot} />}
               {config.enableComment && <Comments pageId={pageId} recordMap={recordMap} />}

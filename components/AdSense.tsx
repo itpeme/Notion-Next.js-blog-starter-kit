@@ -1,6 +1,8 @@
 import Script from 'next/script';
 import * as React from 'react';
 
+import cs from 'classnames';
+
 import { isDev } from 'lib/config';
 
 // 예: ca-pub-1234567890123456 (NEXT_PUBLIC_ 변수는 빌드 때 값이 치환되므로 직접 참조해야 한다)
@@ -10,6 +12,9 @@ export const adsenseClient = rawClient && /^ca-pub-\d+$/.test(rawClient) ? rawCl
 
 // 수동 광고 단위(슬롯) ID. 없으면 자동 광고만 사용한다.
 export const adsensePostSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_POST || null;
+
+// 홈 사이드바 광고 단위(슬롯) ID
+export const adsenseSidebarSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_SIDEBAR || null;
 
 // 개발 중에는 광고를 불러오지 않는다 (본인 광고 노출·클릭은 정책 위반 소지)
 const isAdsEnabled = !!adsenseClient && !isDev;
@@ -59,6 +64,11 @@ export const AdUnit: React.FC<AdUnitProps> = ({
       console.error('adsense push error', err);
     }
   }, []);
+
+  // 개발 환경에서는 광고 대신 자리 표시만 보여줘서 배치를 확인할 수 있게 한다
+  if (isDev) {
+    return <div className={cs('ad-placeholder', className)}>광고 영역 (개발 환경 미리보기)</div>;
+  }
 
   if (!isAdsEnabled) return null;
 

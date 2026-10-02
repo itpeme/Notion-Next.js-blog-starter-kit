@@ -234,3 +234,19 @@
 - 푸터: 이름·설명, 링크(`site.config.ts`의 `footerLinks` + RSS + GitHub), 저작권.
 - 카드에 커버를 보이게 하려고 갤러리 기본값을 페이지 커버로 했다 ([collection-view-gallery.tsx](../packages/react-notion-x/third-party/collection-view-gallery.tsx)). 노션 API로 만든 보기는 커버 설정이 비어 있기 때문이다.
 - 이후(2단계 후보): 추천글 캐러셀, 인기글(수동 지정), 시리즈.
+
+## 13-4. 홈 추천 슬라이드와 사이드바 (구현 완료)
+
+글 DB에 속성 2개를 추가했다.
+- `추천` (체크박스): 체크한 글을 홈 상단 슬라이드에 최신순으로 최대 5개 표시
+- `인기` (숫자): 인기 글 순위(1이 가장 위). 비워 두면 인기 글에 나오지 않음, 최대 5개
+
+홈은 위에서부터 추천 슬라이드 → 제목·설명 → 글 목록(왼쪽, 2열) + 사이드바(오른쪽 320px)로 구성된다. 1024px 이하에서는 한 열이 되고 사이드바가 목록 아래로 내려간다.
+
+사이드바: **인기 있는 글**(`인기` 순위), **카테고리**(공개 글 수, 카테고리 페이지로 링크), **광고**.
+- 광고: `NEXT_PUBLIC_ADSENSE_SLOT_SIDEBAR`가 있으면 표시하고 홈에서도 광고 스크립트를 불러온다. 개발 환경에서는 슬롯이 없어도 점선 자리 표시만 보여준다.
+- 주의: 홈은 글 목록 화면이다. 콘텐츠가 충분히 쌓이기 전에 홈에 광고를 켜면 애드센스 심사에서 불리할 수 있다.
+
+코드: [lib/home-posts.ts](../lib/home-posts.ts), [components/FeaturedCarousel.tsx](../components/FeaturedCarousel.tsx), [components/HomeSidebar.tsx](../components/HomeSidebar.tsx), 스타일은 `styles/custom/design.scss`. 데이터는 이미 불러온 recordMap에서 뽑으므로 노션 호출이 늘지 않는다. 비공개 글은 recordMap에서 이미 제거되어 제외된다.
+
+제외한 것: 최신 댓글(글마다 노션 조회가 필요하고 작성자가 항상 익명), 방문자 수 기반 자동 인기 순위.
