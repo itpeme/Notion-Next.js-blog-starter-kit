@@ -5,6 +5,7 @@ import * as acl from './acl';
 import { pageUrlOverrides, pageUrlAdditions, environment, site } from './config';
 import { db } from './db';
 import { getSiteMap } from './get-site-map';
+import { removeEmptyCollectionSections } from './empty-sections';
 import { getPage, GetPageOptions } from './notion';
 import { isHiddenPost, removeHiddenPostsFromCollections } from './post-status';
 
@@ -97,6 +98,8 @@ export async function resolveNotionPage(
 
   // 목록(컬렉션 뷰)과 페이지 데이터에서 비공개 글 제거
   removeHiddenPostsFromCollections(recordMap);
+  // 항목이 없는 카테고리 섹션(제목 + 빈 뷰) 숨기기
+  removeEmptyCollectionSections(recordMap);
 
   const props = { site, recordMap, pageId };
   return { ...props, ...(await acl.pageAcl(props)) };

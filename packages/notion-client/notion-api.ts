@@ -1,10 +1,14 @@
 // import { promises as fs } from 'fs'
-import got, { OptionsOfJSONResponseBody } from 'got';
 import * as notion from 'notion-types';
 import { parsePageId, getPageContentBlockIds, uuidToId, getBlockCollectionId } from 'notion-utils';
 import pMap from 'p-map';
 
 import * as types from './types';
+
+// 요청에 덧붙일 옵션 (현재는 헤더만 사용)
+export interface FetchOptions {
+  headers?: Record<string, string>;
+}
 
 /**
  * Main Notion API client.
@@ -51,7 +55,7 @@ export class NotionAPI {
       signFileUrls?: boolean;
       chunkLimit?: number;
       chunkNumber?: number;
-      gotOptions?: OptionsOfJSONResponseBody;
+      gotOptions?: FetchOptions;
       draftView?: boolean;
     } = {},
   ): Promise<notion.ExtendedRecordMap> {
@@ -222,7 +226,7 @@ export class NotionAPI {
   }: {
     recordMap: notion.ExtendedRecordMap;
     contentBlockIds?: string[];
-    gotOptions?: OptionsOfJSONResponseBody;
+    gotOptions?: FetchOptions;
   }) {
     recordMap.signed_urls = {};
 
@@ -294,7 +298,7 @@ export class NotionAPI {
     }: {
       chunkLimit?: number;
       chunkNumber?: number;
-      gotOptions?: OptionsOfJSONResponseBody;
+      gotOptions?: FetchOptions;
     } = {},
   ) {
     const parsedPageId = parsePageId(pageId);
@@ -337,7 +341,7 @@ export class NotionAPI {
       userLocale?: string;
       loadContentCover?: boolean;
       draftView?: boolean;
-      gotOptions?: OptionsOfJSONResponseBody;
+      gotOptions?: FetchOptions;
     } = {},
   ) {
     const type = collectionView?.type;
@@ -480,7 +484,7 @@ export class NotionAPI {
     });
   }
 
-  public async getUsers(userIds: string[], gotOptions?: OptionsOfJSONResponseBody) {
+  public async getUsers(userIds: string[], gotOptions?: FetchOptions) {
     // CUSTOM: 타입 수정
     return this.fetch<
       notion.RecordValues<{
@@ -496,7 +500,7 @@ export class NotionAPI {
     });
   }
 
-  public async getBlocks(blockIds: string[], gotOptions?: OptionsOfJSONResponseBody) {
+  public async getBlocks(blockIds: string[], gotOptions?: FetchOptions) {
     return this.fetch<notion.PageChunk>({
       endpoint: 'syncRecordValues',
       body: {
@@ -513,7 +517,7 @@ export class NotionAPI {
 
   public async getSignedFileUrls(
     urls: types.SignedUrlRequest[],
-    gotOptions?: OptionsOfJSONResponseBody,
+    gotOptions?: FetchOptions,
   ) {
     return this.fetch<types.SignedUrlResponse>({
       endpoint: 'getSignedFileUrls',
@@ -524,7 +528,7 @@ export class NotionAPI {
     });
   }
 
-  public async search(params: notion.SearchParams, gotOptions?: OptionsOfJSONResponseBody) {
+  public async search(params: notion.SearchParams, gotOptions?: FetchOptions) {
     const body = {
       type: 'BlocksInAncestor',
       query: params.query,
@@ -534,7 +538,7 @@ export class NotionAPI {
         excludeTemplates: false,
         navigableBlockContentOnly: false,
         requireEditPermissions: false,
-        includePublicPagesWithoutExplicitAccess: false,
+        includePublicPagesWithoutExplicitAccess: true,
         ancestors: [],
         createdBy: [],
         editedBy: [],
@@ -569,7 +573,7 @@ export class NotionAPI {
   }: {
     endpoint: string;
     body: object;
-    gotOptions?: OptionsOfJSONResponseBody;
+    gotOptions?: FetchOptions;
     headers?: any;
   }): Promise<T> {
     // Notion이 got 기본 User-Agent를 403으로 차단하므로 식별 가능한 UA를 기본값으로 사용
@@ -590,17 +594,43 @@ export class NotionAPI {
 
     const url = `${this._apiBaseUrl}/${endpoint}`;
 
-    const response = await got
-      .post(url, {
-        ...gotOptions,
-        retry: {
-          limit: 2,
-          methods: ['POST'],
-        },
-        json: body,
-        headers,
-      })
-      .json<T>();
+    // got 대신 fetch를 쓴다 (Cloudflare Workers 등 Node 전용 모듈이 없는 런타임에서도 동작).
+    // 네트워크 오류, 429, 5xx는 재시도한다 (429는 Retry-After 헤더를 따르고, 빌드 중 동시 요청이 많아 여유 있게 시도).
+    const maxRetries = 5;
+    let retryAfterMs = 0;
+    let response: T | undefined;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+
+        if (res.ok) {
+          response = (await res.json()) as T;
+          break;
+        }
+
+        const retryable = res.status === 429 || res.status >= 500;
+        const retryAfter = Number(res.headers.get('retry-after'));
+
+        retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0;
+        const error: any = new Error(`Response code ${res.status} (${res.statusText})`);
+
+        error.response = { statusCode: res.status };
+
+        if (!retryable || attempt === maxRetries) throw error;
+      } catch (err) {
+        if (attempt === maxRetries || err?.response) throw err;
+      }
+
+      const delay = Math.min(Math.max(retryAfterMs, 1000 * 2 ** attempt), 15000);
+
+      retryAfterMs = 0;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
 
     return normalizeRecordMapValues(response);
   }

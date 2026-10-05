@@ -31,7 +31,8 @@ export default siteConfig({
   defaultPageCoverPosition: 0.5,
 
   // whether or not to enable support for LQIP preview images (optional)
-  isPreviewImageSupportEnabled: true,
+  // Cloudflare Workers에서는 sharp(lqip-modern)를 쓸 수 없어 끈다
+  isPreviewImageSupportEnabled: false,
 
   // whether or not redis is enabled for caching generated preview images (optional)
   // NOTE: if you enable redis, you need to set the `REDIS_HOST` and `REDIS_PASSWORD`
@@ -56,10 +57,6 @@ export default siteConfig({
   navigationStyle: 'custom',
   navigationLinks: [
     {
-      title: '카테고리',
-      pageId: '3ed45f955e168180bebef2a835ca6790',
-    },
-    {
       title: '소개',
       pageId: '3ed45f955e1681599dc4c2b84149228c',
     },
@@ -67,6 +64,10 @@ export default siteConfig({
       // 문의 폼 링크는 여기 한 곳에서만 관리 (다른 폼 서비스로 바꿀 때 이 URL만 교체)
       title: '문의',
       url: 'https://elastic-harp-7d4.notion.site/609b96b48a6b442d8bed3e340020cbab',
+    },
+    {
+      title: '갤러리',
+      pageId: '3f045f955e1681dd9e13e2d7a271634c',
     },
     {
       title: '카테고리',
@@ -84,6 +85,10 @@ export default siteConfig({
     {
       title: '문의',
       url: 'https://elastic-harp-7d4.notion.site/609b96b48a6b442d8bed3e340020cbab',
+    },
+    {
+      title: '갤러리',
+      pageId: '3f045f955e1681dd9e13e2d7a271634c',
     },
     {
       title: '개인정보처리방침',

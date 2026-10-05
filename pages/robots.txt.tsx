@@ -19,7 +19,8 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
   res.setHeader('Content-Type', 'text/plain');
 
   // only allow the site to be crawlable on the production deployment
-  if (process.env.VERCEL_ENV === 'production') {
+  // Vercel은 VERCEL_ENV, 그 외 호스팅(Cloudflare 등)은 SITE_ENV=production 으로 운영을 구분한다
+  if (process.env.VERCEL_ENV === 'production' || process.env.SITE_ENV === 'production') {
     res.write(`User-agent: Mediapartners-Google
 Allow: /
 

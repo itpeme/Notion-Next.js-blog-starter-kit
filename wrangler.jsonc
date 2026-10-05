@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "itpe-blog",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      // 자기 자신을 호출하는 서비스 바인딩 (이름은 위 name 과 같아야 함)
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "itpe-blog"
+    }
+  ],
+  "r2_buckets": [
+    {
+      // 배포 전에 버킷을 만들어야 한다: wrangler r2 bucket create itpe-blog-opennext-cache
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "itpe-blog-opennext-cache"
+    }
+  ]
+}

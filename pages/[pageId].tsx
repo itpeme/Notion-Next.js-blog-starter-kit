@@ -39,7 +39,8 @@ export async function getStaticPaths() {
       },
     })),
     // paths: [],
-    fallback: true,
+    // 'blocking': 처음 요청되는 새 글은 서버에서 만들어 응답 (Cloudflare/OpenNext는 fallback: true의 로딩 셸 캐시를 지원하지 않음)
+    fallback: 'blocking' as const,
   };
 
   return staticPaths;

@@ -37,3 +37,12 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# 워드프레스 이전용 임시 데이터 (커밋 금지)
+migration-data/
+
+# Cloudflare / OpenNext
+.open-next
+.wrangler
+.dev.vars
+*.tsbuildinfo

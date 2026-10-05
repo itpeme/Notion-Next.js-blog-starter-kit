@@ -26,6 +26,7 @@ import { loadPrismComponentsWithRetry } from '~/lib/load-prism-components';
 
 import { AdSenseScript, AdUnit, adsensePostSlot, adsenseSidebarSlot } from './AdSense';
 import { FeaturedCarousel } from './FeaturedCarousel';
+import { GalleryFilter } from './GalleryFilter';
 import { HomeSidebar } from './HomeSidebar';
 import Comments from './Comments';
 // components
@@ -86,9 +87,6 @@ const Collection = dynamic(() =>
   import('react-notion-x/third-party/collection').then(m => m.Collection),
 );
 const Equation = dynamic(() => import('react-notion-x/third-party/equation').then(m => m.Equation));
-const Pdf = dynamic(() => import('react-notion-x/third-party/pdf').then(m => m.Pdf), {
-  ssr: false,
-});
 const Modal = dynamic(
   () =>
     import('react-notion-x/third-party/modal').then(m => {
@@ -152,7 +150,6 @@ export const NotionPage: React.FC<types.PageProps> = ({
       Code,
       Collection,
       Equation,
-      Pdf,
       Modal,
       Tweet,
       Header: NotionPageHeader,
@@ -191,6 +188,14 @@ export const NotionPage: React.FC<types.PageProps> = ({
     () => config.navigationLinks?.find(link => link?.pageId && link.title === '카테고리')?.pageId,
     [],
   );
+
+  // 갤러리 페이지에서는 카드 목록 위에 카테고리 필터를 보여준다
+  const galleryPageId = React.useMemo(
+    () => config.navigationLinks?.find(link => link?.pageId && link.title === '갤러리')?.pageId,
+    [],
+  );
+  const isGalleryPage =
+    !!galleryPageId && pageId?.replace(/-/g, '') === galleryPageId.replace(/-/g, '');
 
   const keys = Object.keys(recordMap?.block || {});
   const block = recordMap?.block?.[keys[0]]?.value;
@@ -291,6 +296,8 @@ export const NotionPage: React.FC<types.PageProps> = ({
               mapPageUrl={siteMapPageUrl}
               categoryPageId={categoryPageId}
             />
+          ) : isGalleryPage ? (
+            <GalleryFilter />
           ) : isBlogPost ? (
             <>
               {adsensePostSlot && !draftView && <AdUnit key={pageId} slot={adsensePostSlot} />}

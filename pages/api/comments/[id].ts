@@ -20,6 +20,11 @@ const responseJSON = (res: NextApiResponse, status: number, json: any) => {
 };
 
 const getClientIp = (req: NextApiRequest) => {
+  // Cloudflare 뒤에서는 cf-connecting-ip가 실제 방문자 IP다
+  const cloudflareIp = req.headers['cf-connecting-ip'];
+
+  if (typeof cloudflareIp === 'string' && cloudflareIp) return cloudflareIp;
+
   const forwarded = req.headers['x-forwarded-for'];
   const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
 

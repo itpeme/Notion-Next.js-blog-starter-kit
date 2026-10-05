@@ -4,15 +4,9 @@ import ExpiryMap from 'expiry-map';
 import pMap from 'p-map';
 import pMemoize from 'p-memoize';
 
-import {
-  isPreviewImageSupportEnabled,
-  navigationStyle,
-  navigationLinks,
-  footerLinks,
-} from './config';
-import { getHiddenPageIds } from './get-site-map';
+import { navigationStyle, navigationLinks, footerLinks } from './config';
+import { getSearchablePageIds } from './get-site-map';
 import { notion } from './notion-api';
-import { getPreviewImageMap } from './preview-images';
 
 // 메뉴에 연결된 페이지 정보는 5분마다 새로 불러온다 (제목·아이콘 변경 반영)
 const NAVIGATION_PAGES_TTL = 5 * 60 * 1000;
@@ -100,27 +94,37 @@ export async function getPage(
     }
   }
 
-  if (isPreviewImageSupportEnabled) {
-    const previewImageMap = await getPreviewImageMap(recordMap);
-    (recordMap as any).preview_images = previewImageMap;
-  }
-
   return recordMap;
 }
 
 export async function search(params: SearchParams): Promise<SearchResults> {
   const results = await notion.search(params);
-  const hiddenPageIds = await getHiddenPageIds();
 
-  if (!hiddenPageIds.size || !results?.results) {
+  if (!results?.results) {
     return results;
   }
 
-  // 검색 결과에서 비공개 글 제거
-  results.results = results.results.filter(item => !hiddenPageIds.has(idToUuid(item.id)));
+  // 노션 검색은 루트 밖의 공개 페이지까지 돌려주므로, 루트 하위의 공개 글만 남긴다
+  // (비공개 글은 사이트맵에서 빠지므로 함께 걸러짐). 같은 페이지의 중복 결과도 한 번만 보여준다.
+  const searchablePageIds = await getSearchablePageIds();
+  const seen = new Set<string>();
 
-  for (const hiddenPageId of hiddenPageIds) {
-    delete results.recordMap?.block?.[hiddenPageId];
+  const removedPageIds = new Set<string>();
+
+  results.results = results.results.filter(item => {
+    // 검색 결과 ID는 이미 하이픈이 있는 UUID라 idToUuid를 그대로 쓰면 깨지므로 하이픈을 먼저 제거한다
+    const pageId = idToUuid(item.id.replace(/-/g, ''));
+    if (!searchablePageIds.has(pageId)) {
+      removedPageIds.add(pageId);
+      return false;
+    }
+    if (seen.has(pageId)) return false;
+    seen.add(pageId);
+    return true;
+  });
+
+  for (const pageId of removedPageIds) {
+    delete results.recordMap?.block?.[pageId];
   }
 
   return results;
