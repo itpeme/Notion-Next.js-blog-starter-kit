@@ -45,6 +45,56 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ posts, mapPageUrl, cat
   const categories = getCategoryCounts(posts);
   const categoryUrl = categoryPageId ? mapPageUrl(categoryPageId) : null;
   const [recentComments, setRecentComments] = React.useState<RecentComment[]>([]);
+  // 선택한 카테고리의 글만 홈 목록에 보여준다 (null이면 전체)
+  const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
+
+  // 주소의 ?category= 값으로 시작할 수 있게 한다 (공유·새로고침용)
+  React.useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get('category');
+
+    if (initial) setSelectedCategory(initial);
+  }, []);
+
+  const selectCategory = (name: string | null) => {
+    const next = name && name === selectedCategory ? null : name;
+    const url = new URL(window.location.href);
+
+    if (next) {
+      url.searchParams.set('category', next);
+    } else {
+      url.searchParams.delete('category');
+    }
+
+    window.history.replaceState(window.history.state, '', url);
+    setSelectedCategory(next);
+  };
+
+  // 홈 카드 목록에서 선택한 카테고리가 아닌 카드를 숨긴다 (카드는 늦게 그려질 수 있어 DOM 변화를 관찰)
+  React.useEffect(() => {
+    const getCards = () =>
+      document.querySelectorAll<HTMLElement>('.notion-collection .notion-collection-card');
+
+    const apply = () => {
+      getCards().forEach(card => {
+        const category = card.querySelector('.notion-property-select-item')?.textContent || '';
+
+        card.style.display = !selectedCategory || category === selectedCategory ? '' : 'none';
+      });
+    };
+
+    apply();
+
+    const observer = new MutationObserver(apply);
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      getCards().forEach(card => {
+        card.style.display = '';
+      });
+    };
+  }, [selectedCategory]);
 
   // 최근 댓글: 최신 공개 글들의 댓글을 서버에서 모아 온다 (댓글 기능이 켜져 있을 때만)
   const recentPostIds = React.useMemo(
@@ -83,22 +133,40 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ posts, mapPageUrl, cat
         <section className="home-widget">
           <h3>카테고리</h3>
           <ul className="home-categories">
+            <li>
+              <button
+                type="button"
+                className={selectedCategory ? 'home-category-row' : 'home-category-row active'}
+                aria-pressed={!selectedCategory}
+                onClick={() => selectCategory(null)}
+              >
+                <span>전체</span>
+                <span className="home-category-count">{posts.length}</span>
+              </button>
+            </li>
             {categories.map(category => (
               <li key={category.name}>
-                {categoryUrl ? (
-                  <Link href={categoryUrl}>
-                    <span>{category.name}</span>
-                    <span className="home-category-count">{category.count}</span>
-                  </Link>
-                ) : (
-                  <span className="home-category-row">
-                    <span>{category.name}</span>
-                    <span className="home-category-count">{category.count}</span>
-                  </span>
-                )}
+                <button
+                  type="button"
+                  className={
+                    selectedCategory === category.name
+                      ? 'home-category-row active'
+                      : 'home-category-row'
+                  }
+                  aria-pressed={selectedCategory === category.name}
+                  onClick={() => selectCategory(category.name)}
+                >
+                  <span>{category.name}</span>
+                  <span className="home-category-count">{category.count}</span>
+                </button>
               </li>
             ))}
           </ul>
+          {categoryUrl && (
+            <Link href={categoryUrl} className="home-category-all">
+              카테고리별 글 목록 보기 →
+            </Link>
+          )}
         </section>
       )}
 

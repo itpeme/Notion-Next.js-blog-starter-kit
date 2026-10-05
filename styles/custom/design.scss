@@ -629,13 +629,39 @@ body .notion-header {
       font-weight: 600;
     }
 
-    a:hover {
+    // 카테고리 선택 버튼 (버튼 기본 모양 제거)
+    button.home-category-row {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    a:hover,
+    button.home-category-row:hover,
+    button.home-category-row.active {
       color: var(--primary-color);
     }
 
     .home-category-count {
       color: var(--muted-color);
       font-weight: 500;
+    }
+  }
+
+  .home-category-all {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: var(--muted-color);
+
+    &:hover {
+      color: var(--primary-color);
     }
   }
 
