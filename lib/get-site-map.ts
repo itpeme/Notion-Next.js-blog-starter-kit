@@ -89,3 +89,12 @@ export const getHiddenPageIds = pMemoize(
   },
   { cache: new ExpiryMap(HIDDEN_PAGE_IDS_TTL), cacheKey: () => 'hidden-page-ids' },
 );
+
+// 루트 페이지 하위에 있고 공개 상태인 페이지 ID (검색 결과를 이 범위로 제한할 때 사용)
+export const getSearchablePageIds = pMemoize(
+  async (): Promise<Set<string>> => {
+    const siteMap = await getSiteMap();
+    return new Set(Object.values(siteMap.canonicalPageMap || {}));
+  },
+  { cache: new ExpiryMap(HIDDEN_PAGE_IDS_TTL), cacheKey: () => 'searchable-page-ids' },
+);

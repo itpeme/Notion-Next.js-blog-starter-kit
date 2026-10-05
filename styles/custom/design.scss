@@ -568,6 +568,54 @@ body .notion-header {
     }
   }
 
+  .home-comments {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    a {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      &:hover .home-comment-text {
+        color: var(--primary-color);
+      }
+    }
+
+    .home-comment-text {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1.5;
+      word-break: break-word;
+      transition: color 150ms ease;
+    }
+
+    .home-comment-meta {
+      display: flex;
+      gap: 8px;
+      min-width: 0;
+      font-size: 0.82rem;
+      color: var(--muted-color);
+
+      > span {
+        flex: none;
+      }
+
+      .home-comment-post {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+  }
+
   .home-categories {
     display: flex;
     flex-direction: column;
@@ -639,6 +687,42 @@ body .notion-header {
     .home-carousel-controls {
       left: 24px;
       bottom: 24px;
+    }
+  }
+}
+
+/**
+ * ---------------- 갤러리 카테고리 필터 ----------------
+ */
+.gallery-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 20px;
+
+  .gallery-filter-chip {
+    padding: 6px 14px;
+    border: 1px solid var(--card-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted-color);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
+
+    &:hover {
+      color: var(--heading-color);
+    }
+
+    &.active {
+      background: var(--primary-color);
+      border-color: var(--primary-color);
+      color: #fff;
     }
   }
 }
