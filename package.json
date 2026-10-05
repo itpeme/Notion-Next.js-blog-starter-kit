@@ -9,6 +9,7 @@
   },
   "repository": "itpeme/Notion-Next.js-blog-starter-kit",
   "license": "MIT",
+  "packageManager": "yarn@1.22.22",
   "engines": {
     "node": ">=18.17"
   },
