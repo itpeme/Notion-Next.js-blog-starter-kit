@@ -5,6 +5,12 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 
 module.exports = withBundleAnalyzer({
   staticPageGenerationTimeout: 300,
+  experimental: {
+    // 빌드 중 정적 페이지 생성이 노션 비공식 API를 동시에 너무 많이 호출해서 429(요청 제한)로 실패한다.
+    // 워커를 1개로 줄여 노션 호출을 순차화하고, 사이트맵 조회 결과도 한 프로세스에서 재사용하게 한다.
+    cpus: 1,
+    staticGenerationMaxConcurrency: 2,
+  },
   // next/router를 쓰는 외부 패키지는 Next가 직접 컴파일해야 Cloudflare(OpenNext) 번들에서도 라우터 컨텍스트가 하나로 합쳐진다
   transpilePackages: ['nextjs-google-analytics'],
   images: {
