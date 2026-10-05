@@ -25,7 +25,8 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
   const { page_cover_position = 0.5 } = block.format || {}
   const coverPosition = (1 - page_cover_position) * 100
 
-  if (cover?.type === 'page_content') {
+  // 페이지 본문의 첫 번째 이미지를 썸네일로 만든다 (없으면 null)
+  const getContentImageCover = () => {
     const contentBlockId = block.content?.find((blockId) => {
       const block = recordMap.block[blockId]?.value
 
@@ -34,32 +35,32 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
       }
     })
 
-    if (contentBlockId) {
-      const contentBlock = recordMap.block[contentBlockId]?.value as ImageBlock
+    if (!contentBlockId) return null
 
-      const source =
-        contentBlock.properties?.source?.[0]?.[0] ??
-        contentBlock.format?.display_source
+    const contentBlock = recordMap.block[contentBlockId]?.value as ImageBlock
+    const source =
+      contentBlock.properties?.source?.[0]?.[0] ??
+      contentBlock.format?.display_source
 
-      if (source) {
-        const src = mapImageUrl(source, contentBlock)
-        const caption = contentBlock.properties?.caption?.[0]?.[0]
+    if (!source) return null
 
-        coverContent = (
-          <LazyImage
-            src={src}
-            alt={caption || 'notion image'}
-            style={{
-              objectFit: coverAspect
-            }}
-          />
-        )
-      }
-    }
+    const src = mapImageUrl(source, contentBlock)
+    const caption = contentBlock.properties?.caption?.[0]?.[0]
 
-    if (!coverContent) {
-      coverContent = <div className='notion-collection-card-cover-empty' />
-    }
+    return (
+      <LazyImage
+        src={src}
+        alt={caption || 'notion image'}
+        style={{
+          objectFit: coverAspect
+        }}
+      />
+    )
+  }
+
+  if (cover?.type === 'page_content') {
+    coverContent =
+      getContentImageCover() || <div className='notion-collection-card-cover-empty' />
   } else if (cover?.type === 'page_cover') {
     const { page_cover } = block.format || {}
 
@@ -109,6 +110,11 @@ export const CollectionCard: React.FC<CollectionCardProps> = ({
         )
       }
     }
+  }
+
+  // 속성(파일)에 이미지가 없으면 페이지 본문의 첫 이미지를 대신 쓴다
+  if (!coverContent && cover?.type === 'property') {
+    coverContent = getContentImageCover()
   }
 
   return (
