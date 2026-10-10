@@ -4,8 +4,6 @@
   "name": "itpe-blog",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
-  // 임시: ISR 캐시 저장 여부를 로그로 확인하기 위한 디버그 (확인 후 제거)
-  "vars": { "OPEN_NEXT_DEBUG": "true" },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

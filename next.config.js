@@ -5,6 +5,26 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 
 module.exports = withBundleAnalyzer({
   staticPageGenerationTimeout: 300,
+  // 워드프레스 시절 주소를 새 사이트의 대응 경로로 넘긴다 (서치 콘솔 클릭 기준).
+  // 글 주소는 Slug 를 그대로 유지했으므로 따로 규칙이 필요하지 않다.
+  async redirects() {
+    const CATEGORIES = '/%EC%B9%B4%ED%85%8C%EA%B3%A0%EB%A6%AC'; // '/카테고리' (한글 경로라 인코딩해서 쓴다)
+    return [
+      // 태그/카테고리 아카이브는 새 사이트에 없다 → 카테고리 페이지로
+      { source: '/tag/:path*', destination: CATEGORIES, permanent: true },
+      { source: '/category/:path*', destination: CATEGORIES, permanent: true },
+      // 이전하지 않은 KBoard 게시판(질의응답)과 작성자/페이지 아카이브는 홈으로
+      { source: '/qna/:path*', destination: '/', permanent: true },
+      { source: '/qna', destination: '/', permanent: true },
+      { source: '/author/:path*', destination: '/', permanent: true },
+      { source: '/page/:path*', destination: '/', permanent: true },
+      // 워드프레스 사이트맵 → 새 사이트맵
+      { source: '/wp-sitemap.xml', destination: '/sitemap.xml', permanent: true },
+      { source: '/wp-sitemap-:path(.*)', destination: '/sitemap.xml', permanent: true },
+      // 노션 본문에서 링크하는데 이전하지 않은 글
+      { source: '/sapgui-770-news', destination: '/sapgui-770-installation-file', permanent: true },
+    ];
+  },
   experimental: {
     // 빌드 중 정적 페이지 생성이 노션 비공식 API를 동시에 너무 많이 호출해서 429(요청 제한)로 실패한다.
     // 워커를 1개로 줄여 노션 호출을 순차화하고, 사이트맵 조회 결과도 한 프로세스에서 재사용하게 한다.
