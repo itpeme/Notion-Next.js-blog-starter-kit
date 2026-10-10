@@ -21,6 +21,9 @@ module.exports = withBundleAnalyzer({
       // 워드프레스 사이트맵 → 새 사이트맵
       { source: '/wp-sitemap.xml', destination: '/sitemap.xml', permanent: true },
       { source: '/wp-sitemap-:path(.*)', destination: '/sitemap.xml', permanent: true },
+      // Slug 가 Next.js 예약 경로(404/500)와 겹쳐 노션에서 이름을 바꾼 글
+      { source: '/404', destination: '/cbo-table-archiving', permanent: true },
+      { source: '/500', destination: '/co-pa-transaction-tables', permanent: true },
       // 노션 본문에서 링크하는데 이전하지 않은 글
       { source: '/sapgui-770-news', destination: '/sapgui-770-installation-file', permanent: true },
     ];
