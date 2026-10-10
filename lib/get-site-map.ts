@@ -10,7 +10,13 @@ import * as config from './config';
 import * as types from './types';
 
 const uuid = !!includeNotionIdInUrls;
-const cache = new ExpiryMap(10000);
+
+// 사이트맵 한 번을 만들려면 노션의 모든 페이지를 긁어야 한다(지금 145개).
+// 캐시가 10초였을 때는 정적 페이지를 만들 때마다 이 크롤링이 다시 돌아서
+// 노션이 429(요청 제한)로 막았고 빌드가 실패했다. 빌드 중에는 한 번만 긁고 재사용한다.
+const isBuild = process.env.NEXT_PHASE === 'phase-production-build';
+const SITE_MAP_TTL = isBuild ? 60 * 60 * 1000 : 5 * 60 * 1000;
+const cache = new ExpiryMap(SITE_MAP_TTL);
 
 export async function getSiteMap(): Promise<types.SiteMap> {
   const partialSiteMap = await getAllPages(config.rootNotionPageId, config.rootNotionSpaceId);
