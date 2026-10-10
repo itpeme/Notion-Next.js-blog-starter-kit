@@ -11,21 +11,21 @@ module.exports = withBundleAnalyzer({
     const CATEGORIES = '/%EC%B9%B4%ED%85%8C%EA%B3%A0%EB%A6%AC'; // '/카테고리' (한글 경로라 인코딩해서 쓴다)
     return [
       // 태그/카테고리 아카이브는 새 사이트에 없다 → 카테고리 페이지로
-      { source: '/tag/:path*', destination: CATEGORIES, permanent: true },
-      { source: '/category/:path*', destination: CATEGORIES, permanent: true },
+      { source: '/tag/:path*', destination: CATEGORIES, statusCode: 301 },
+      { source: '/category/:path*', destination: CATEGORIES, statusCode: 301 },
       // 이전하지 않은 KBoard 게시판(질의응답)과 작성자/페이지 아카이브는 홈으로
-      { source: '/qna/:path*', destination: '/', permanent: true },
-      { source: '/qna', destination: '/', permanent: true },
-      { source: '/author/:path*', destination: '/', permanent: true },
-      { source: '/page/:path*', destination: '/', permanent: true },
+      { source: '/qna/:path*', destination: '/', statusCode: 301 },
+      { source: '/qna', destination: '/', statusCode: 301 },
+      { source: '/author/:path*', destination: '/', statusCode: 301 },
+      { source: '/page/:path*', destination: '/', statusCode: 301 },
       // 워드프레스 사이트맵 → 새 사이트맵
-      { source: '/wp-sitemap.xml', destination: '/sitemap.xml', permanent: true },
-      { source: '/wp-sitemap-:path(.*)', destination: '/sitemap.xml', permanent: true },
+      { source: '/wp-sitemap.xml', destination: '/sitemap.xml', statusCode: 301 },
+      { source: '/wp-sitemap-:path(.*)', destination: '/sitemap.xml', statusCode: 301 },
       // Slug 가 Next.js 예약 경로(404/500)와 겹쳐 노션에서 이름을 바꾼 글
-      { source: '/404', destination: '/cbo-table-archiving', permanent: true },
-      { source: '/500', destination: '/co-pa-transaction-tables', permanent: true },
+      { source: '/404', destination: '/cbo-table-archiving', statusCode: 301 },
+      { source: '/500', destination: '/co-pa-transaction-tables', statusCode: 301 },
       // 노션 본문에서 링크하는데 이전하지 않은 글
-      { source: '/sapgui-770-news', destination: '/sapgui-770-installation-file', permanent: true },
+      { source: '/sapgui-770-news', destination: '/sapgui-770-installation-file', statusCode: 301 },
     ];
   },
   experimental: {

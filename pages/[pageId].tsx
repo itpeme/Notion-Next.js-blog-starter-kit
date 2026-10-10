@@ -1,4 +1,6 @@
 import * as React from 'react';
+
+const ONE_DAY = 24 * 60 * 60;
 import { GetStaticProps } from 'next';
 import { isDev, domain } from 'lib/config';
 import { getSiteMap } from 'lib/get-site-map';
@@ -12,7 +14,15 @@ export const getStaticProps: GetStaticProps<PageProps, Params> = async context =
   try {
     const props = await resolveNotionPage(domain, rawPageId);
 
-    return { props, revalidate: 10 };
+    // 없는 주소(또는 비공개 글)는 404 화면만 보여주고 상태코드는 200이었다.
+    // 검색엔진이 옛 워드프레스 주소를 정상 페이지로 수집하게 되므로 진짜 404로 응답한다.
+    if (props?.error?.statusCode === 404) {
+      return { notFound: true, revalidate: ONE_DAY };
+    }
+
+    // 재생성 결과가 캐시에 반영되지 않아(OpenNext ISR 미해결) 10초마다 재생성이 쌓였다.
+    // 노션 수정은 재빌드로 반영하고, 평소에는 캐시에서만 응답한다.
+    return { props, revalidate: ONE_DAY };
   } catch (err) {
     console.error('page error', domain, rawPageId, err);
 

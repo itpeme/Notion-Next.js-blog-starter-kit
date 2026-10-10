@@ -9,7 +9,7 @@ interface FooterProps {
 }
 
 export const FooterImpl: React.FC<FooterProps> = ({ mapPageUrl }) => {
-  const year = new Date().getFullYear();
+  const year = 2008; // 블로그를 시작한 해
   const links = (config.footerLinks || []).filter(link => link && (link.pageId || link.url));
 
   return (
