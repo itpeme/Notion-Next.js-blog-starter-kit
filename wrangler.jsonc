@@ -4,6 +4,10 @@
   "name": "itpe-blog",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "vars": {
+    // robots.txt(SSR)가 운영 배포를 구분하는 값. 없으면 전체 크롤링 차단이 나간다.
+    "SITE_ENV": "production"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
