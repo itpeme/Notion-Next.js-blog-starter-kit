@@ -8,6 +8,7 @@ import { getSiteMap } from './get-site-map';
 import { removeEmptyCollectionSections } from './empty-sections';
 import { getPage, GetPageOptions } from './notion';
 import { isHiddenPost, removeHiddenPostsFromCollections } from './post-status';
+import { trimPreviewContent } from './trim-preview-content';
 
 export async function resolveNotionPage(
   domain: string,
@@ -100,6 +101,8 @@ export async function resolveNotionPage(
   removeHiddenPostsFromCollections(recordMap);
   // 항목이 없는 카테고리 섹션(제목 + 빈 뷰) 숨기기
   removeEmptyCollectionSections(recordMap);
+  // 목록 카드가 쓰지 않는 다른 페이지의 본문 블록 제거 (홈 응답 1.9MB -> 0.6MB)
+  trimPreviewContent(recordMap, pageId);
 
   const props = { site, recordMap, pageId };
   return { ...props, ...(await acl.pageAcl(props)) };
