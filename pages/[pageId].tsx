@@ -4,7 +4,6 @@ const ONE_DAY = 24 * 60 * 60;
 import { GetStaticProps } from 'next';
 import { isDev, domain } from 'lib/config';
 import { getSiteMap } from 'lib/get-site-map';
-import { isRootPage } from 'lib/generate-static-feeds';
 import { resolveNotionPage } from 'lib/resolve-notion-page';
 import { PageProps, Params } from 'lib/types';
 import { NotionPage } from 'components';
@@ -19,12 +18,6 @@ export const getStaticProps: GetStaticProps<PageProps, Params> = async context =
     // 검색엔진이 옛 워드프레스 주소를 정상 페이지로 수집하게 되므로 진짜 404로 응답한다.
     if (props?.error?.statusCode === 404) {
       return { notFound: true, revalidate: ONE_DAY };
-    }
-
-    // 루트(홈) 페이지는 Slug 주소('/홈')로도 열려서 '/' 와 내용이 같은 주소가 둘이 된다.
-    // 검색엔진에 중복으로 수집되지 않도록 한쪽으로 모은다.
-    if ('pageId' in props && isRootPage(props.pageId)) {
-      return { redirect: { destination: '/', statusCode: 301 } };
     }
 
     // 재생성 결과가 캐시에 반영되지 않아(OpenNext ISR 미해결) 10초마다 재생성이 쌓였다.
@@ -66,8 +59,6 @@ export async function getStaticPaths() {
       // Next.js가 먼저 차지하는 경로(404/500 등)와 Slug가 겹치면 빌드가 'Conflicting paths'로 실패한다.
       // 노션에서 Slug를 고치는 것이 정답이지만, 빌드가 통째로 깨지지 않도록 여기서도 걸러 둔다.
       .filter(pageId => !RESERVED_PATHS.has(pageId))
-      // '/홈'(루트 페이지의 Slug 주소)은 '/' 로 301 하므로 미리 만들지 않는다
-      .filter(pagePath => !isRootPage(siteMap.canonicalPageMap[pagePath]))
       .map(pageId => ({
         params: {
           pageId,

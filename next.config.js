@@ -26,6 +26,11 @@ module.exports = withBundleAnalyzer({
       { source: '/500', destination: '/co-pa-transaction-tables', statusCode: 301 },
       // 노션 본문에서 링크하는데 이전하지 않은 글
       { source: '/sapgui-770-news', destination: '/sapgui-770-installation-file', statusCode: 301 },
+      // 루트(홈) 페이지는 Slug 주소로도 열려서 '/' 와 내용이 같은 주소가 둘이 된다.
+      // getStaticProps 에서 redirect 를 돌려주면 Cloudflare(OpenNext)에서 응답이 멈추므로
+      // 렌더 경로를 타지 않는 라우팅 단계에서 처리한다.
+      { source: '/홈', destination: '/', statusCode: 301 },
+      { source: '/%ED%99%88', destination: '/', statusCode: 301 },
       // 피드는 빌드 때 public/feed.xml 로 만들어 둔다. 옛 주소 /feed 로 들어오면 그쪽으로 보낸다
       // (피드 안에 선언된 feed_url 도 원래부터 /feed.xml 이었다).
       { source: '/feed', destination: '/feed.xml', statusCode: 301 },
