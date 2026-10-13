@@ -46,3 +46,8 @@ migration-data/
 .wrangler
 .dev.vars
 *.tsbuildinfo
+
+# 빌드 때 노션 크롤링 결과로 생성되는 사이트맵/피드 (커밋하지 않는다)
+/public/sitemap.xml
+/public/feed.xml
+/public/*.tmp

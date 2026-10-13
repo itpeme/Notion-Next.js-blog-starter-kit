@@ -26,6 +26,9 @@ module.exports = withBundleAnalyzer({
       { source: '/500', destination: '/co-pa-transaction-tables', statusCode: 301 },
       // 노션 본문에서 링크하는데 이전하지 않은 글
       { source: '/sapgui-770-news', destination: '/sapgui-770-installation-file', statusCode: 301 },
+      // 피드는 빌드 때 public/feed.xml 로 만들어 둔다. 옛 주소 /feed 로 들어오면 그쪽으로 보낸다
+      // (피드 안에 선언된 feed_url 도 원래부터 /feed.xml 이었다).
+      { source: '/feed', destination: '/feed.xml', statusCode: 301 },
     ];
   },
   experimental: {

@@ -6,6 +6,7 @@ import { includeNotionIdInUrls } from './config';
 import { notion } from './notion-api';
 import { getCanonicalPageId } from './get-canonical-page-id';
 import { isHiddenPost } from './post-status';
+import { staticFeedsExist, writeStaticFeeds } from './generate-static-feeds';
 import * as config from './config';
 import * as types from './types';
 
@@ -30,6 +31,11 @@ type CachedSiteMap = Pick<types.SiteMap, 'canonicalPageMap'> & { hiddenPageIds: 
 
 function readBuildCache(): CachedSiteMap | null {
   if (!buildCacheUsable) return null;
+
+  // 사이트맵/피드 파일이 아직 없으면 이 캐시를 쓰면 안 된다. 캐시에는 pageMap 이 없어서
+  // 파일을 만들 수 없고, 그대로 넘어가면 사이트맵 없이 배포된다.
+  // (운영 Worker 는 어차피 파일을 못 읽어 아래 try 에서 빠지므로 동작이 달라지지 않는다.)
+  if (!staticFeedsExist()) return null;
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -82,6 +88,8 @@ export async function getSiteMap(): Promise<types.SiteMap> {
 
   const partialSiteMap = await getAllPages(config.rootNotionPageId, config.rootNotionSpaceId);
   writeBuildCache(partialSiteMap);
+  // 전체 크롤링이 끝난 지금이 사이트맵/피드를 만들 수 있는 유일한 지점이다(pageMap이 여기에만 있다).
+  writeStaticFeeds(partialSiteMap);
 
   return {
     site: config.site,
