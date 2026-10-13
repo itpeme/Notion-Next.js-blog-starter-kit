@@ -64,9 +64,14 @@ export async function getStaticPaths() {
           pageId,
         },
       })),
-    // paths: [],
-    // 'blocking': 처음 요청되는 새 글은 서버에서 만들어 응답 (Cloudflare/OpenNext는 fallback: true의 로딩 셸 캐시를 지원하지 않음)
-    fallback: 'blocking' as const,
+    // 'blocking'이었을 때는 목록에 없는 주소가 들어오면 그때마다 resolveNotionPage가
+    // getSiteMap()으로 노션 145페이지를 전부 다시 긁었다. 운영 Worker에는 빌드 때 쓰는 파일 캐시가
+    // 없어서, 없는 주소와 비공개 글이 404 대신 2~3분 무응답이 됐다(측정: 60/90/170초 타임아웃).
+    // 옛 워드프레스 주소를 긁는 검색엔진이 매번 여기에 걸리므로 수집 속도까지 떨어진다.
+    // 'false'면 아래 목록에 없는 주소는 노션을 보지 않고 즉시 404 페이지로 답한다.
+    // 대신 노션에 새로 공개한 글은 재빌드해야 열린다 — revalidate가 1일이라 어차피 홈 목록과
+    // 사이트맵에도 재빌드 전에는 안 나오므로, 반영 경로를 재빌드 하나로 통일한다.
+    fallback: false as const,
   };
 
   return staticPaths;
