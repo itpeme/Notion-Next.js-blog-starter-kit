@@ -8,8 +8,20 @@ import { resolveNotionPage } from 'lib/resolve-notion-page';
 import { PageProps, Params } from 'lib/types';
 import { NotionPage } from 'components';
 
+// 빌드가 미리 만드는 경로에는 퍼센트 인코딩된 복사본(`%EC%86%8C...`)이 섞여 있다(아래 getStaticPaths 주석).
+// 노션 Slug 표의 키는 디코딩된 원래 문자열이므로 조회 전에 되돌린다.
+// 요청 시 렌더되는 경로는 Next 가 이미 디코딩해 주므로 이 함수는 그때도 안전하게 그대로 통과한다.
+function decodeSlug(rawPageId: string) {
+  try {
+    return decodeURIComponent(rawPageId);
+  } catch {
+    // 잘못된 인코딩이면 원문 그대로 둔다(어차피 404로 끝난다)
+    return rawPageId;
+  }
+}
+
 export const getStaticProps: GetStaticProps<PageProps, Params> = async context => {
-  const rawPageId = context.params.pageId as string;
+  const rawPageId = decodeSlug(context.params.pageId as string);
 
   try {
     const props = await resolveNotionPage(domain, rawPageId);
@@ -54,16 +66,28 @@ export async function getStaticPaths() {
 
   const siteMap = await getSiteMap();
 
+  const pageIds = Object.keys(siteMap.canonicalPageMap)
+    // Next.js가 먼저 차지하는 경로(404/500 등)와 Slug가 겹치면 빌드가 'Conflicting paths'로 실패한다.
+    // 노션에서 Slug를 고치는 것이 정답이지만, 빌드가 통째로 깨지지 않도록 여기서도 걸러 둔다.
+    .filter(pageId => !RESERVED_PATHS.has(pageId));
+
+  // 한글 Slug(`소개`, `갤러리`, `table-content-transport-방법` 등)는 두 가지 형태로 등록한다.
+  // 브라우저와 크롤러는 경로를 퍼센트 인코딩해서 보내는데(`/%EC%86%8C%EA%B0%9C`),
+  // OpenNext 의 fallback:false 처리(@opennextjs/aws handleFallbackFalse)는 들어온 경로를
+  // **디코딩하지 않고** prerender-manifest 의 키(디코딩된 `/소개`)와 비교한다. 그래서 한글 주소가
+  // 전부 404가 됐다(4.1.10 에도 남아 있는 상류 버그). 인코딩된 형태도 미리 만들어 두면
+  // 매니페스트에 그 키가 생겨 404로 빠지지 않고, 실제 응답은 캐시 조회가 디코딩을 하므로
+  // 원래(디코딩된) 경로의 캐시에서 나간다. fallback:'blocking' 때는 요청 시 렌더가 받아 줘서 드러나지 않았다.
+  const encodedVariants = pageIds
+    .map(pageId => encodeURIComponent(pageId))
+    .filter((encoded, index) => encoded !== pageIds[index]);
+
   const staticPaths = {
-    paths: Object.keys(siteMap.canonicalPageMap)
-      // Next.js가 먼저 차지하는 경로(404/500 등)와 Slug가 겹치면 빌드가 'Conflicting paths'로 실패한다.
-      // 노션에서 Slug를 고치는 것이 정답이지만, 빌드가 통째로 깨지지 않도록 여기서도 걸러 둔다.
-      .filter(pageId => !RESERVED_PATHS.has(pageId))
-      .map(pageId => ({
-        params: {
-          pageId,
-        },
-      })),
+    paths: [...pageIds, ...encodedVariants].map(pageId => ({
+      params: {
+        pageId,
+      },
+    })),
     // 'blocking'이었을 때는 목록에 없는 주소가 들어오면 그때마다 resolveNotionPage가
     // getSiteMap()으로 노션 145페이지를 전부 다시 긁었다. 운영 Worker에는 빌드 때 쓰는 파일 캐시가
     // 없어서, 없는 주소와 비공개 글이 404 대신 2~3분 무응답이 됐다(측정: 60/90/170초 타임아웃).
