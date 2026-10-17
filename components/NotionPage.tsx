@@ -24,7 +24,13 @@ import { formatDate, getBlockTitle, getPageProperty } from 'notion-utils';
 
 import { loadPrismComponentsWithRetry } from '~/lib/load-prism-components';
 
-import { AdSenseScript, AdUnit, adsensePostSlot, adsenseSidebarSlot } from './AdSense';
+import {
+  AdSenseScript,
+  AdUnit,
+  adsensePostTopSlot,
+  adsensePostSlot,
+  adsenseSidebarSlot,
+} from './AdSense';
 import { FeaturedCarousel } from './FeaturedCarousel';
 import { GalleryFilter } from './GalleryFilter';
 import { HomeSidebar } from './HomeSidebar';
@@ -288,6 +294,11 @@ export const NotionPage: React.FC<types.PageProps> = ({
           isHome ? (
             <FeaturedCarousel posts={getFeaturedPosts(homePosts)} mapPageUrl={siteMapPageUrl} />
           ) : undefined
+        }
+        pageContentHeader={
+          isBlogPost && adsensePostTopSlot && !draftView && !isLiteMode ? (
+            <AdUnit key={`post-top:${pageId}`} slot={adsensePostTopSlot} />
+          ) : null
         }
         pageFooter={
           isHome ? (

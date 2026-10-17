@@ -34,6 +34,7 @@ interface BlockProps {
   header?: React.ReactNode;
   footer?: React.ReactNode;
   pageHeader?: React.ReactNode;
+  pageContentHeader?: React.ReactNode;
   pageFooter?: React.ReactNode;
   pageTitle?: React.ReactNode;
   pageAside?: React.ReactNode;
@@ -79,6 +80,7 @@ export const Block: React.FC<BlockProps> = props => {
     header,
     footer,
     pageHeader,
+    pageContentHeader,
     pageFooter,
     pageTitle,
     pageAside,
@@ -199,7 +201,10 @@ export const Block: React.FC<BlockProps> = props => {
                           isBlogPost && hasToc && 'notion-page-content-has-toc',
                         )}
                       >
-                        <article className="notion-page-content-inner">{children}</article>
+                        <article className="notion-page-content-inner">
+                          {pageContentHeader}
+                          {children}
+                        </article>
 
                         {isBlogPost && hasAside && (
                           <PageAside
@@ -245,7 +250,12 @@ export const Block: React.FC<BlockProps> = props => {
                 <components.Collection block={block} ctx={ctx} />
               )}
 
-              {block.type !== 'collection_view_page' && children}
+              {block.type !== 'collection_view_page' && (
+                <>
+                  {pageContentHeader}
+                  {children}
+                </>
+              )}
 
               {pageFooter}
             </main>

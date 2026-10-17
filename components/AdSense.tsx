@@ -10,7 +10,10 @@ const rawClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT;
 
 export const adsenseClient = rawClient && /^ca-pub-\d+$/.test(rawClient) ? rawClient : null;
 
-// 수동 광고 단위(슬롯) ID. 없으면 자동 광고만 사용한다.
+// 글 상단 수동 광고 단위(슬롯) ID
+export const adsensePostTopSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_POST_TOP || null;
+
+// 글 하단 수동 광고 단위(슬롯) ID
 export const adsensePostSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_POST || null;
 
 // 홈 사이드바 광고 단위(슬롯) ID

@@ -40,6 +40,7 @@ export const NotionRenderer: React.FC<{
   header?: React.ReactNode;
   footer?: React.ReactNode;
   pageHeader?: React.ReactNode;
+  pageContentHeader?: React.ReactNode;
   pageFooter?: React.ReactNode;
   pageTitle?: React.ReactNode;
   pageAside?: React.ReactNode;
@@ -112,6 +113,7 @@ export const NotionBlockRenderer: React.FC<{
   bodyClassName?: string;
   header?: React.ReactNode;
   footer?: React.ReactNode;
+  pageContentHeader?: React.ReactNode;
   disableHeader?: boolean;
 
   blockId?: string;
