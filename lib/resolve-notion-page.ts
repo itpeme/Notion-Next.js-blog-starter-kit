@@ -1,20 +1,23 @@
 import { ExtendedRecordMap } from 'notion-types';
 import { parsePageId } from 'notion-utils';
 
-import * as acl from './acl';
 import { pageUrlOverrides, pageUrlAdditions, environment, site } from './config';
 import { db } from './db';
 import { getSiteMap } from './get-site-map';
-import { removeEmptyCollectionSections } from './empty-sections';
 import { getPage, GetPageOptions } from './notion';
-import { isHiddenPost, removeHiddenPostsFromCollections } from './post-status';
-import { trimPreviewContent } from './trim-preview-content';
+import { readPublishedPage } from './published-content';
+import { prepareNotionPage } from './prepare-notion-page';
+import { writeBootstrapPage } from './build-content-snapshot';
 
 export async function resolveNotionPage(
   domain: string,
   rawPageId?: string,
   options: GetPageOptions = {},
 ) {
+  if (!options.draftView) {
+    const published = await readPublishedPage(rawPageId);
+    if (published) return published;
+  }
   let pageId: string;
   let recordMap: ExtendedRecordMap;
 
@@ -84,23 +87,7 @@ export async function resolveNotionPage(
     recordMap = await getPage(pageId, options);
   }
 
-  // 게시 상태가 공개가 아닌 글은 URL(슬러그/ID)로 직접 접근해도 404
-  if (isHiddenPost(recordMap?.block?.[pageId]?.value, recordMap)) {
-    return {
-      error: {
-        message: `Not found "${rawPageId ?? pageId}"`,
-        statusCode: 404,
-      },
-    };
-  }
-
-  // 목록(컬렉션 뷰)과 페이지 데이터에서 비공개 글 제거
-  removeHiddenPostsFromCollections(recordMap);
-  // 항목이 없는 카테고리 섹션(제목 + 빈 뷰) 숨기기
-  removeEmptyCollectionSections(recordMap);
-  // 목록 카드가 쓰지 않는 다른 페이지의 본문 블록 제거 (홈 응답 1.9MB -> 0.6MB)
-  trimPreviewContent(recordMap, pageId);
-
-  const props = { site, recordMap, pageId };
-  return { ...props, ...(await acl.pageAcl(props)) };
+  const props = await prepareNotionPage(pageId, recordMap);
+  if (!options.draftView) writeBootstrapPage(props);
+  return props;
 }

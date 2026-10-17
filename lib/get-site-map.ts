@@ -10,6 +10,9 @@ import { isHiddenPost } from './post-status';
 import { staticFeedsExist, writeStaticFeeds } from './generate-static-feeds';
 import * as config from './config';
 import * as types from './types';
+import { readPublishedIndex } from './published-content';
+import { writeBootstrapIndex } from './build-content-snapshot';
+import { RESERVED_CONTENT_PATHS } from './content-paths';
 
 const uuid = !!includeNotionIdInUrls;
 
@@ -21,6 +24,8 @@ const cache = new ExpiryMap(SITE_MAP_TTL);
 type CachedSiteMap = Pick<types.SiteMap, 'canonicalPageMap'> & { hiddenPageIds: string[] };
 
 export async function getSiteMap(): Promise<types.SiteMap> {
+  const published = await readPublishedIndex();
+  if (published) return { site: config.site, pageMap: {}, ...published };
   // 원본 페이지와 주소 표 모두 이번 빌드에서만 공유한다. 이전 빌드의 표는 복원하지 않는다.
   // 표에는 pageMap이 없으므로 사이트맵/피드가 먼저 생성되어 있어야 사용할 수 있다.
   const cached: CachedSiteMap | null = staticFeedsExist()
@@ -39,6 +44,13 @@ export async function getSiteMap(): Promise<types.SiteMap> {
   const partialSiteMap = await getAllPages(config.rootNotionPageId, config.rootNotionSpaceId);
   // 전체 크롤링이 끝난 지금이 사이트맵/피드를 만들 수 있는 유일한 지점이다(pageMap이 여기에만 있다).
   writeStaticFeeds(partialSiteMap);
+  writeBootstrapIndex({
+    schema: 1,
+    rootPageId: config.rootNotionPageId,
+    updatedAt: new Date().toISOString(),
+    canonicalPageMap: partialSiteMap.canonicalPageMap,
+    hiddenPageIds: partialSiteMap.hiddenPageIds || [],
+  });
   writeBuildCache('site-map', config.rootNotionPageId, {
     canonicalPageMap: partialSiteMap.canonicalPageMap,
     hiddenPageIds: partialSiteMap.hiddenPageIds,
@@ -80,6 +92,7 @@ async function getAllPagesImpl(
     const canonicalPageId = getCanonicalPageId(pageId, recordMap, {
       uuid,
     });
+    if (!canonicalPageId || RESERVED_CONTENT_PATHS.has(canonicalPageId)) return map;
 
     if (map[canonicalPageId]) {
       // you can have multiple pages in different collections that have the same id
@@ -109,7 +122,7 @@ async function getAllPagesImpl(
 const HIDDEN_PAGE_IDS_TTL = 5 * 60 * 1000;
 
 // 검색 API처럼 자주 호출되는 곳에서 전체 사이트맵 조회가 반복되지 않도록 길게 캐시
-export const getHiddenPageIds = pMemoize(
+const cachedHiddenPageIds = pMemoize(
   async (): Promise<Set<string>> => {
     const siteMap = await getSiteMap();
     return new Set(siteMap.hiddenPageIds || []);
@@ -118,10 +131,20 @@ export const getHiddenPageIds = pMemoize(
 );
 
 // 루트 페이지 하위에 있고 공개 상태인 페이지 ID (검색 결과를 이 범위로 제한할 때 사용)
-export const getSearchablePageIds = pMemoize(
+const cachedSearchablePageIds = pMemoize(
   async (): Promise<Set<string>> => {
     const siteMap = await getSiteMap();
     return new Set(Object.values(siteMap.canonicalPageMap || {}));
   },
   { cache: new ExpiryMap(HIDDEN_PAGE_IDS_TTL), cacheKey: () => 'searchable-page-ids' },
 );
+
+export async function getHiddenPageIds(): Promise<Set<string>> {
+  const published = await readPublishedIndex();
+  return published ? new Set(published.hiddenPageIds) : cachedHiddenPageIds();
+}
+
+export async function getSearchablePageIds(): Promise<Set<string>> {
+  const published = await readPublishedIndex();
+  return published ? new Set(Object.values(published.canonicalPageMap)) : cachedSearchablePageIds();
+}

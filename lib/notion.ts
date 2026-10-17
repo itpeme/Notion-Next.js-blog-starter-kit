@@ -11,16 +11,15 @@ import { notion, getNotionPage } from './notion-api';
 // 메뉴에 연결된 페이지 정보는 5분마다 새로 불러온다 (제목·아이콘 변경 반영)
 const NAVIGATION_PAGES_TTL = 5 * 60 * 1000;
 
+export const navigationLinkPageIds = Array.from(
+  new Set(
+    [...(navigationLinks || []), ...(footerLinks || [])].map(link => link?.pageId).filter(Boolean),
+  ),
+);
+
 const getNavigationLinkPages = pMemoize(
   async (): Promise<ExtendedRecordMap[]> => {
     // 메뉴와 푸터에 연결된 페이지의 제목·URL 정보를 함께 불러온다 (중복 제거)
-    const navigationLinkPageIds = Array.from(
-      new Set(
-        [...(navigationLinks || []), ...(footerLinks || [])]
-          .map(link => link?.pageId)
-          .filter(Boolean),
-      ),
-    );
 
     if (navigationStyle !== 'default' && navigationLinkPageIds.length) {
       return pMap(
@@ -57,7 +56,7 @@ const RECORD_MAP_KEYS = [
  * 지금 불러온 페이지 데이터(fresh)가 메뉴용 페이지 정보(캐시됨)보다 우선하도록 병합한다.
  * 화면은 recordMap.block의 첫 번째 블록을 현재 페이지로 쓰므로 fresh의 키 순서를 앞에 유지한다.
  */
-function mergeRecordMapsPreferFirst(
+export function mergeRecordMapsPreferFirst(
   fresh: ExtendedRecordMap,
   extra: ExtendedRecordMap,
 ): ExtendedRecordMap {

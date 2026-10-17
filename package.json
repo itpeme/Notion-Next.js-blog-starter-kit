@@ -29,6 +29,7 @@
     "test:prettier": "prettier '**/*.{js,jsx,ts,tsx}' --check",
     "test:notion-cache": "node --test scripts/notion-build-cache.test.cjs",
     "test:notion-api": "node --test scripts/notion-api.test.cjs",
+    "test:content-refresh": "node --test scripts/content-refresh.test.cjs",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf:deploy": "opennextjs-cloudflare build && node scripts/populate-r2-cache.mjs && wrangler deploy --no-autoconfig"

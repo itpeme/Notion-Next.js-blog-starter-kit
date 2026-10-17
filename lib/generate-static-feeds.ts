@@ -74,20 +74,29 @@ export function writeStaticFeeds(siteMap: Partial<types.SiteMap>): void {
       return;
     }
 
-    const entries = collectEntries(canonicalPageMap, pageMap);
-    const posts = entries.filter(entry => entry.isBlogPost);
-
-    writeAtomic(fs, path.join(publicDir, SITEMAP_FILE), createSitemap(entries));
-    writeAtomic(fs, path.join(publicDir, FEED_FILE), createFeed(posts));
+    const documents = createFeedDocuments(siteMap);
+    writeAtomic(fs, path.join(publicDir, SITEMAP_FILE), documents.sitemap);
+    writeAtomic(fs, path.join(publicDir, FEED_FILE), documents.feed);
 
     console.log(
-      `[static-feeds] sitemap.xml: ${entries.length + 1} urls, feed.xml: ${posts.length} items`,
+      `[static-feeds] sitemap.xml: ${documents.urlCount} urls, feed.xml: ${documents.postCount} items`,
     );
   } catch (err) {
     // 파일을 못 쓰는 환경(운영 Worker)이면 정상이다. 빌드 중이라면 로그로 드러난다.
     unavailable = true;
     console.warn('[static-feeds] 생성 건너뜀:', (err as Error)?.message);
   }
+}
+
+export function createFeedDocuments(siteMap: Partial<types.SiteMap>) {
+  const entries = collectEntries(siteMap.canonicalPageMap, siteMap.pageMap);
+  const posts = entries.filter(entry => entry.isBlogPost);
+  return {
+    sitemap: createSitemap(entries),
+    feed: createFeed(posts),
+    urlCount: entries.length + 1,
+    postCount: posts.length,
+  };
 }
 
 function writeAtomic(fs: any, file: string, contents: string) {

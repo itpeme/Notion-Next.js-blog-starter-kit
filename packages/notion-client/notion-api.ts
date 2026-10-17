@@ -21,6 +21,7 @@ export class NotionAPI {
   private readonly _activeUser?: string;
   private readonly _userTimeZone: string;
   private readonly _requestScheduler?: NotionRequestScheduler;
+  private readonly _requestTimeoutMs: number;
 
   constructor({
     apiBaseUrl = 'https://www.notion.so/api/v3',
@@ -29,6 +30,7 @@ export class NotionAPI {
     userTimeZone = 'America/New_York',
     requestIntervalMs = 0,
     requestIntervalMsByEndpoint = {},
+    requestTimeoutMs = 0,
   }: {
     apiBaseUrl?: string;
     authToken?: string;
@@ -37,11 +39,13 @@ export class NotionAPI {
     activeUser?: string;
     requestIntervalMs?: number;
     requestIntervalMsByEndpoint?: Readonly<Record<string, number>>;
+    requestTimeoutMs?: number;
   } = {}) {
     this._apiBaseUrl = apiBaseUrl;
     this._authToken = authToken;
     this._activeUser = activeUser;
     this._userTimeZone = userTimeZone;
+    this._requestTimeoutMs = requestTimeoutMs;
     const intervalMs =
       Number.isFinite(requestIntervalMs) && requestIntervalMs > 0 ? requestIntervalMs : 0;
     const intervalMsByEndpoint = Object.fromEntries(
@@ -632,12 +636,17 @@ export class NotionAPI {
       let statusCode: number | undefined;
       let retryable = true;
       let error: any;
+      const controller = this._requestTimeoutMs > 0 ? new AbortController() : undefined;
+      const timer = controller
+        ? setTimeout(() => controller.abort(), this._requestTimeoutMs)
+        : undefined;
 
       try {
         const res = await fetch(url, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
+          signal: controller?.signal,
         });
         statusCode = res.status;
 
@@ -653,6 +662,8 @@ export class NotionAPI {
       } catch (err) {
         error = err;
         retryable = !err?.response;
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
       }
 
       // 지정된 대기 시간을 15초로 자르지 않고 서버가 요청한 시간을 지킨다.

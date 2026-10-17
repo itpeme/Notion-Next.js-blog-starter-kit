@@ -51,3 +51,4 @@ migration-data/
 /public/sitemap.xml
 /public/feed.xml
 /public/*.tmp
+/public/_blog-data/

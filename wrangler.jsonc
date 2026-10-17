@@ -1,16 +1,23 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
+  "main": "custom-worker.ts",
+  "alias": {
+    "notion-client": "./packages/notion-client/index.ts",
+    "notion-utils": "./packages/notion-utils/index.ts",
+    "notion-types": "./packages/notion-types/index.ts"
+  },
   "name": "itpe-blog",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "define": { "process.env.NODE_ENV": "\"production\"" },
   "vars": {
     // robots.txt(SSR)가 운영 배포를 구분하는 값. 없으면 전체 크롤링 차단이 나간다.
     "SITE_ENV": "production"
   },
   "assets": {
     "directory": ".open-next/assets",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": true
   },
   "services": [
     {
@@ -25,5 +32,7 @@
       "binding": "NEXT_INC_CACHE_R2_BUCKET",
       "bucket_name": "itpe-blog-opennext-cache"
     }
-  ]
+  ],
+  "durable_objects": { "bindings": [{ "name": "BLOG_REFRESH", "class_name": "BlogRefreshJob" }] },
+  "migrations": [{ "tag": "blog-refresh-v1", "new_sqlite_classes": ["BlogRefreshJob"] }]
 }
