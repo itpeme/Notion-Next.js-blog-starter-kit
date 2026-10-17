@@ -4,6 +4,7 @@ import { parsePageId, getPageContentBlockIds, uuidToId, getBlockCollectionId } f
 import pMap from 'p-map';
 
 import * as types from './types';
+import { NotionRequestScheduler, parseRetryAfter } from './request-scheduler';
 
 // pageId는 병렬 조회의 진단 로그에만 사용하며 HTTP 요청에는 포함하지 않는다.
 export interface FetchOptions {
@@ -19,23 +20,29 @@ export class NotionAPI {
   private readonly _authToken?: string;
   private readonly _activeUser?: string;
   private readonly _userTimeZone: string;
+  private readonly _requestScheduler?: NotionRequestScheduler;
 
   constructor({
     apiBaseUrl = 'https://www.notion.so/api/v3',
     authToken,
     activeUser,
     userTimeZone = 'America/New_York',
+    requestIntervalMs = 0,
   }: {
     apiBaseUrl?: string;
     authToken?: string;
     userLocale?: string;
     userTimeZone?: string;
     activeUser?: string;
+    requestIntervalMs?: number;
   } = {}) {
     this._apiBaseUrl = apiBaseUrl;
     this._authToken = authToken;
     this._activeUser = activeUser;
     this._userTimeZone = userTimeZone;
+    if (Number.isFinite(requestIntervalMs) && requestIntervalMs > 0) {
+      this._requestScheduler = new NotionRequestScheduler(requestIntervalMs);
+    }
   }
 
   public async getPage(
@@ -608,6 +615,8 @@ export class NotionAPI {
     let response: T | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const queuedAt = Date.now();
+      await this._requestScheduler?.waitForTurn();
       const attemptStartedAt = Date.now();
       let statusCode: number | undefined;
       let retryable = true;
@@ -627,9 +636,7 @@ export class NotionAPI {
         }
 
         retryable = res.status === 429 || res.status >= 500;
-        const retryAfter = Number(res.headers.get('retry-after'));
-
-        retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0;
+        retryAfterMs = parseRetryAfter(res.headers.get('retry-after'));
         error = new Error(`Response code ${res.status} (${res.statusText})`);
         error.response = { statusCode: res.status };
       } catch (err) {
@@ -637,7 +644,16 @@ export class NotionAPI {
         retryable = !err?.response;
       }
 
-      const delay = Math.min(Math.max(retryAfterMs, 1000 * 2 ** attempt), 15000);
+      // 지정된 대기 시간을 15초로 자르지 않고 서버가 요청한 시간을 지킨다.
+      const backoffMs = Math.min(1000 * 2 ** attempt, 15000);
+      const delay = Math.max(
+        retryAfterMs,
+        backoffMs,
+        statusCode === 429 && this._requestScheduler && !retryAfterMs ? 15000 : 0,
+      );
+      // 마지막 시도가 실패해도 공통 대기는 유지해 다른 페이지의 요청 폭주를 막는다.
+      const sharedCooldownMs =
+        statusCode === 429 ? this._requestScheduler?.pause(delay) : undefined;
       const retrying = retryable && attempt < maxRetries;
       const details = {
         endpoint,
@@ -648,6 +664,7 @@ export class NotionAPI {
         attempt: attempt + 1,
         maxAttempts: maxRetries + 1,
         durationMs: Date.now() - attemptStartedAt,
+        queueWaitMs: attemptStartedAt - queuedAt,
         elapsedMs: Date.now() - startedAt,
         reason:
           statusCode === 429
@@ -662,6 +679,8 @@ export class NotionAPI {
         errorName: error?.name,
         errorCode: error?.cause?.code || error?.code,
         retrying,
+        retryAfterMs,
+        sharedCooldownMs,
         retryDelayMs: retrying ? delay : 0,
       };
 
@@ -671,7 +690,10 @@ export class NotionAPI {
       if (!retrying) throw error;
 
       retryAfterMs = 0;
-      await new Promise(resolve => setTimeout(resolve, delay));
+      // 429는 다음 차례에서 공통 대기열을 통과하므로 개별 타이머를 중복해서 걸지 않는다.
+      if (sharedCooldownMs === undefined) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
 
     return normalizeRecordMapValues(response);

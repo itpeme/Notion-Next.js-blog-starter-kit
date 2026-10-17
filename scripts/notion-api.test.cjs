@@ -12,6 +12,7 @@ const { outputFiles } = require('esbuild').buildSync({
     contents: `
       export { NotionAPI } from './packages/notion-client/notion-api';
       export { getAllPagesInSpace } from './packages/notion-utils/get-all-pages-in-space';
+      export { NotionRequestScheduler, parseRetryAfter } from './packages/notion-client/request-scheduler';
     `,
     resolveDir: root,
   },
@@ -26,13 +27,14 @@ const { outputFiles } = require('esbuild').buildSync({
 });
 const compiled = new Module(__filename, module);
 compiled._compile(outputFiles[0].text, __filename);
-const { NotionAPI, getAllPagesInSpace } = compiled.exports;
+const { NotionAPI, getAllPagesInSpace, NotionRequestScheduler, parseRetryAfter } = compiled.exports;
 
 const pageId = '12345678-1234-1234-1234-123456789abc';
 const fileId = '12345678-1234-1234-1234-123456789abd';
 let originalFetch;
 let originalWarn;
 let originalTimeout;
+let originalNow;
 let logs;
 let delays;
 
@@ -40,6 +42,7 @@ beforeEach(() => {
   originalFetch = globalThis.fetch;
   originalWarn = console.warn;
   originalTimeout = globalThis.setTimeout;
+  originalNow = Date.now;
   logs = [];
   delays = [];
   console.warn = (...args) => logs.push(args);
@@ -54,6 +57,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   console.warn = originalWarn;
   globalThis.setTimeout = originalTimeout;
+  Date.now = originalNow;
 });
 
 function recordMap(cover, withFile = false) {
@@ -267,4 +271,170 @@ test('crawl logs distinguish page retries from HTTP retries and redact URLs', as
   assert.equal(details.request.retrying, false);
   assert.ok(details.durationMs >= 0 && details.elapsedMs >= 0);
   assert.doesNotMatch(JSON.stringify(logs), /secret.example|SECRET/);
+});
+
+function fakeClock() {
+  let now = 0;
+  let sleepers = [];
+  const flush = async () => {
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+  };
+  return {
+    now: () => now,
+    sleep: ms => new Promise(resolve => sleepers.push({ at: now + ms, resolve })),
+    flush,
+    async tick(ms) {
+      now += ms;
+      const ready = sleepers.filter(timer => timer.at <= now);
+      sleepers = sleepers.filter(timer => timer.at > now);
+      ready.forEach(timer => timer.resolve());
+      await flush();
+    },
+  };
+}
+
+test('spaces concurrent request starts while allowing unfinished responses to overlap', async () => {
+  const clock = fakeClock();
+  const scheduler = new NotionRequestScheduler(350, clock);
+  const starts = [];
+  let finishFirst;
+  const firstResponse = new Promise(resolve => {
+    finishFirst = resolve;
+  });
+  const first = scheduler.waitForTurn().then(() => {
+    starts.push(clock.now());
+    return firstResponse;
+  });
+  const second = scheduler.waitForTurn().then(() => starts.push(clock.now()));
+  const third = scheduler.waitForTurn().then(() => starts.push(clock.now()));
+  await clock.flush();
+  assert.deepEqual(starts, [0]);
+  await clock.tick(349);
+  assert.deepEqual(starts, [0]);
+  await clock.tick(1);
+  assert.deepEqual(starts, [0, 350]);
+  await clock.tick(350);
+  assert.deepEqual(starts, [0, 350, 700]);
+  finishFirst();
+  await Promise.all([first, second, third]);
+});
+
+test('a new cooldown extends already queued requests without shortening an existing pause', async () => {
+  const clock = fakeClock();
+  const scheduler = new NotionRequestScheduler(350, clock);
+  await scheduler.waitForTurn();
+  const starts = [];
+  const second = scheduler.waitForTurn().then(() => starts.push(clock.now()));
+  await clock.flush();
+  scheduler.pause(1000);
+  await clock.tick(350);
+  scheduler.pause(1500);
+  assert.equal(scheduler.pause(100), 1500);
+  const third = scheduler.waitForTurn().then(() => starts.push(clock.now()));
+  await clock.tick(650);
+  assert.deepEqual(starts, []);
+  await clock.tick(850);
+  assert.deepEqual(starts, [1850]);
+  await clock.tick(350);
+  await Promise.all([second, third]);
+  assert.deepEqual(starts, [1850, 2200]);
+});
+
+test('parses Retry-After seconds and HTTP dates without a 15-second cap', () => {
+  const now = Date.parse('2026-10-17T06:00:00Z');
+  assert.equal(parseRetryAfter('60', now), 60000);
+  assert.equal(parseRetryAfter(' 120 ', now), 120000);
+  assert.equal(parseRetryAfter('Sat, 17 Oct 2026 06:01:00 GMT', now), 60000);
+  for (const value of [
+    null,
+    '',
+    'invalid',
+    '-1',
+    '1.5',
+    'Infinity',
+    'Sat, 17 Oct 2026 05:00:00 GMT',
+  ]) {
+    assert.equal(parseRetryAfter(value, now), 0);
+  }
+});
+
+test('an actual 429 pauses queued APIs and retries together, then resumes with spacing', async () => {
+  const clock = fakeClock();
+  Date.now = clock.now;
+  globalThis.setTimeout = (callback, ms) => {
+    clock.sleep(ms).then(callback);
+    return { unref() {} };
+  };
+  const api = new NotionAPI({ requestIntervalMs: 350 });
+  const starts = [];
+  let attempts = 0;
+  globalThis.fetch = async (url, options) => {
+    const endpoint = url.split('/').pop();
+    const id = JSON.parse(options.body).pageId;
+    starts.push({ endpoint, pageId: id, at: clock.now() });
+    if (id === 'limited' && ++attempts === 1) {
+      return new Response('{}', { status: 429, headers: { 'Retry-After': '60' } });
+    }
+    return new Response('{"ok":true}');
+  };
+  const pending = [
+    api.fetch({ endpoint: 'loadPageChunk', body: { pageId: 'limited' } }),
+    api.fetch({ endpoint: 'queryCollection', body: { pageId: 'queued' } }),
+    api.fetch({ endpoint: 'getSignedFileUrls', body: { pageId: 'also-queued' } }),
+  ];
+  await clock.flush();
+  assert.equal(starts.length, 1);
+  const details = JSON.parse(logs[0][1]);
+  assert.equal(details.retryAfterMs, 60000);
+  assert.equal(details.sharedCooldownMs, 60000);
+  assert.equal(details.retryDelayMs, 60000);
+  await clock.tick(30000);
+  pending.push(api.fetch({ endpoint: 'getRecordValues', body: { pageId: 'new' } }));
+  await clock.tick(29999);
+  assert.equal(starts.length, 1);
+  await clock.tick(1);
+  assert.equal(starts.length, 2);
+  assert.equal(starts[1].at, 60000);
+  for (let i = 0; i < 3; i++) await clock.tick(350);
+  const results = await Promise.all(pending);
+  assert.ok(results.every(result => result.ok));
+  assert.equal(attempts, 2);
+  assert.deepEqual(
+    starts.map(start => start.at),
+    [0, 60000, 60350, 60700, 61050],
+  );
+});
+
+test('429 without Retry-After shares a fallback pause even when all retries are exhausted', async () => {
+  const clock = fakeClock();
+  Date.now = clock.now;
+  globalThis.setTimeout = (callback, ms) => {
+    clock.sleep(ms).then(callback);
+    return { unref() {} };
+  };
+  const api = new NotionAPI({ requestIntervalMs: 350 });
+  globalThis.fetch = async () => new Response('{}', { status: 429 });
+  let failure;
+  const done = api.fetch({ endpoint: 'loadPageChunk', body: { pageId } }).catch(error => {
+    failure = error;
+  });
+  await clock.flush();
+  for (let i = 0; i < 5; i++) await clock.tick(15000);
+  await done;
+  assert.equal(failure.response.statusCode, 429);
+  assert.equal(logs.length, 6);
+  const last = JSON.parse(logs[5][1]);
+  assert.equal(last.retrying, false);
+  assert.equal(last.sharedCooldownMs, 15000);
+  const starts = [];
+  globalThis.fetch = async () => {
+    starts.push(clock.now());
+    return new Response('{}');
+  };
+  const next = api.fetch({ endpoint: 'queryCollection', body: {} });
+  await clock.flush();
+  assert.deepEqual(starts, []);
+  await clock.tick(15000);
+  await next;
+  assert.deepEqual(starts, [90000]);
 });
