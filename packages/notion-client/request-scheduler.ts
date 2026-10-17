@@ -8,6 +8,8 @@ export class NotionRequestScheduler {
   private nextStartAt = 0;
   private cooldownUntil = 0;
   private queue: Promise<void> = Promise.resolve();
+  private endpointNextStartAt = new Map<string, number>();
+  private endpointQueues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly intervalMs: number,
@@ -15,9 +17,32 @@ export class NotionRequestScheduler {
       now: () => Date.now(),
       sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
     },
+    private readonly intervalMsByEndpoint: Readonly<Record<string, number>> = {},
   ) {}
 
-  public waitForTurn(): Promise<void> {
+  public waitForTurn(endpoint = ''): Promise<void> {
+    const previous = this.endpointQueues.get(endpoint) || Promise.resolve();
+    const turn = previous.then(async () => {
+      // API 고유 간격은 공통 대기열 밖에서 기다려 다른 API를 막지 않는다.
+      let delay = (this.endpointNextStartAt.get(endpoint) || 0) - this.clock.now();
+      while (delay > 0) {
+        await this.clock.sleep(Math.min(delay, 60000));
+        delay = (this.endpointNextStartAt.get(endpoint) || 0) - this.clock.now();
+      }
+      await this.waitForSharedTurn();
+      this.endpointNextStartAt.set(
+        endpoint,
+        this.clock.now() + (this.intervalMsByEndpoint[endpoint] || 0),
+      );
+    });
+    this.endpointQueues.set(
+      endpoint,
+      turn.catch(() => {}),
+    );
+    return turn;
+  }
+
+  private waitForSharedTurn(): Promise<void> {
     const turn = this.queue.then(async () => {
       // 대기 중 다른 요청이 429를 받으면 연장된 공통 대기 시간을 다시 확인한다.
       let delay = Math.max(this.nextStartAt, this.cooldownUntil) - this.clock.now();

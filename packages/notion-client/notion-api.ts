@@ -28,6 +28,7 @@ export class NotionAPI {
     activeUser,
     userTimeZone = 'America/New_York',
     requestIntervalMs = 0,
+    requestIntervalMsByEndpoint = {},
   }: {
     apiBaseUrl?: string;
     authToken?: string;
@@ -35,13 +36,23 @@ export class NotionAPI {
     userTimeZone?: string;
     activeUser?: string;
     requestIntervalMs?: number;
+    requestIntervalMsByEndpoint?: Readonly<Record<string, number>>;
   } = {}) {
     this._apiBaseUrl = apiBaseUrl;
     this._authToken = authToken;
     this._activeUser = activeUser;
     this._userTimeZone = userTimeZone;
-    if (Number.isFinite(requestIntervalMs) && requestIntervalMs > 0) {
-      this._requestScheduler = new NotionRequestScheduler(requestIntervalMs);
+    const intervalMs =
+      Number.isFinite(requestIntervalMs) && requestIntervalMs > 0 ? requestIntervalMs : 0;
+    const intervalMsByEndpoint = Object.fromEntries(
+      Object.entries(requestIntervalMsByEndpoint).filter(([, ms]) => Number.isFinite(ms) && ms > 0),
+    );
+    if (intervalMs || Object.keys(intervalMsByEndpoint).length) {
+      this._requestScheduler = new NotionRequestScheduler(
+        intervalMs,
+        undefined,
+        intervalMsByEndpoint,
+      );
     }
   }
 
@@ -616,7 +627,7 @@ export class NotionAPI {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const queuedAt = Date.now();
-      await this._requestScheduler?.waitForTurn();
+      await this._requestScheduler?.waitForTurn(endpoint);
       const attemptStartedAt = Date.now();
       let statusCode: number | undefined;
       let retryable = true;

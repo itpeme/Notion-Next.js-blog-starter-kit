@@ -340,6 +340,89 @@ test('a new cooldown extends already queued requests without shortening an exist
   assert.deepEqual(starts, [1850, 2200]);
 });
 
+test('a page-specific interval does not hold up author, collection or signing requests', async () => {
+  const clock = fakeClock();
+  const scheduler = new NotionRequestScheduler(150, clock, { loadPageChunk: 1300 });
+  const starts = [];
+  const start = endpoint =>
+    scheduler.waitForTurn(endpoint).then(() => {
+      starts.push({ endpoint, at: clock.now() });
+    });
+  const pending = [
+    start('loadPageChunk'),
+    start('loadPageChunk'),
+    start('getRecordValues'),
+    start('queryCollection'),
+    start('getSignedFileUrls'),
+  ];
+  await clock.flush();
+  assert.deepEqual(starts, [{ endpoint: 'loadPageChunk', at: 0 }]);
+  for (let i = 0; i < 3; i++) await clock.tick(150);
+  assert.deepEqual(starts, [
+    { endpoint: 'loadPageChunk', at: 0 },
+    { endpoint: 'getRecordValues', at: 150 },
+    { endpoint: 'queryCollection', at: 300 },
+    { endpoint: 'getSignedFileUrls', at: 450 },
+  ]);
+  await clock.tick(849);
+  assert.equal(starts.length, 4);
+  await clock.tick(1);
+  await Promise.all(pending);
+  assert.deepEqual(starts[4], { endpoint: 'loadPageChunk', at: 1300 });
+});
+
+test('shared cooldown still blocks all endpoint lanes and resumes without a burst', async () => {
+  const clock = fakeClock();
+  const scheduler = new NotionRequestScheduler(150, clock, { loadPageChunk: 1300 });
+  await scheduler.waitForTurn('loadPageChunk');
+  const starts = [];
+  const pending = ['loadPageChunk', 'queryCollection', 'getSignedFileUrls'].map(endpoint =>
+    scheduler.waitForTurn(endpoint).then(() => starts.push({ endpoint, at: clock.now() })),
+  );
+  await clock.flush();
+  scheduler.pause(60000);
+  await clock.tick(59999);
+  assert.deepEqual(starts, []);
+  await clock.tick(1);
+  assert.equal(starts.length, 1);
+  for (let i = 0; i < 2; i++) await clock.tick(150);
+  await Promise.all(pending);
+  assert.deepEqual(
+    starts.map(start => start.at),
+    [60000, 60150, 60300],
+  );
+});
+
+test('NotionAPI applies endpoint intervals to actual HTTP request starts', async () => {
+  const clock = fakeClock();
+  Date.now = clock.now;
+  globalThis.setTimeout = (callback, ms) => {
+    clock.sleep(ms).then(callback);
+    return { unref() {} };
+  };
+  const api = new NotionAPI({
+    requestIntervalMs: 150,
+    requestIntervalMsByEndpoint: { loadPageChunk: 1300 },
+  });
+  const starts = [];
+  globalThis.fetch = async url => {
+    starts.push({ endpoint: url.split('/').pop(), at: clock.now() });
+    return new Response('{}');
+  };
+  const pending = ['loadPageChunk', 'loadPageChunk', 'getRecordValues'].map(endpoint =>
+    api.fetch({ endpoint, body: {} }),
+  );
+  await clock.flush();
+  await clock.tick(150);
+  assert.deepEqual(starts, [
+    { endpoint: 'loadPageChunk', at: 0 },
+    { endpoint: 'getRecordValues', at: 150 },
+  ]);
+  await clock.tick(1150);
+  await Promise.all(pending);
+  assert.deepEqual(starts[2], { endpoint: 'loadPageChunk', at: 1300 });
+});
+
 test('parses Retry-After seconds and HTTP dates without a 15-second cap', () => {
   const now = Date.parse('2026-10-17T06:00:00Z');
   assert.equal(parseRetryAfter('60', now), 60000);
