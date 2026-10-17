@@ -5,9 +5,10 @@ import pMap from 'p-map';
 
 import * as types from './types';
 
-// 요청에 덧붙일 옵션 (현재는 헤더만 사용)
+// pageId는 병렬 조회의 진단 로그에만 사용하며 HTTP 요청에는 포함하지 않는다.
 export interface FetchOptions {
   headers?: Record<string, string>;
+  pageId?: string;
 }
 
 /**
@@ -59,6 +60,7 @@ export class NotionAPI {
       draftView?: boolean;
     } = {},
   ): Promise<notion.ExtendedRecordMap> {
+    gotOptions = { ...gotOptions, pageId: parsePageId(pageId) || undefined };
     const page = await this.getPageRaw(pageId, {
       chunkLimit,
       chunkNumber,
@@ -79,7 +81,7 @@ export class NotionAPI {
 
     if (authorId) {
       try {
-        const users = await this.getUsers([authorId]);
+        const users = await this.getUsers([authorId], gotOptions);
         const author = users.results[0];
 
         recordMap.notion_user = {
@@ -253,7 +255,9 @@ export class NotionAPI {
           if (
             source.indexOf('youtube') >= 0 ||
             source.indexOf('vimeo') >= 0 ||
-            source.includes('splash')
+            source.includes('splash') ||
+            // Notion 기본 커버는 공개 정적 이미지이므로 파일 서명 대상이 아니다.
+            (block.type === 'page' && isDefaultPageCover(source))
           ) {
             return [];
           }
@@ -515,10 +519,7 @@ export class NotionAPI {
     });
   }
 
-  public async getSignedFileUrls(
-    urls: types.SignedUrlRequest[],
-    gotOptions?: FetchOptions,
-  ) {
+  public async getSignedFileUrls(urls: types.SignedUrlRequest[], gotOptions?: FetchOptions) {
     return this.fetch<types.SignedUrlResponse>({
       endpoint: 'getSignedFileUrls',
       body: {
@@ -597,42 +598,98 @@ export class NotionAPI {
     // got 대신 fetch를 쓴다 (Cloudflare Workers 등 Node 전용 모듈이 없는 런타임에서도 동작).
     // 네트워크 오류, 429, 5xx는 재시도한다 (429는 Retry-After 헤더를 따르고, 빌드 중 동시 요청이 많아 여유 있게 시도).
     const maxRetries = 5;
+    const startedAt = Date.now();
+    const requestBody = body as {
+      pageId?: string;
+      collection?: { id?: string };
+      collectionView?: { id?: string };
+    };
     let retryAfterMs = 0;
     let response: T | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const attemptStartedAt = Date.now();
+      let statusCode: number | undefined;
+      let retryable = true;
+      let error: any;
+
       try {
         const res = await fetch(url, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
         });
+        statusCode = res.status;
 
         if (res.ok) {
           response = (await res.json()) as T;
           break;
         }
 
-        const retryable = res.status === 429 || res.status >= 500;
+        retryable = res.status === 429 || res.status >= 500;
         const retryAfter = Number(res.headers.get('retry-after'));
 
         retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0;
-        const error: any = new Error(`Response code ${res.status} (${res.statusText})`);
-
+        error = new Error(`Response code ${res.status} (${res.statusText})`);
         error.response = { statusCode: res.status };
-
-        if (!retryable || attempt === maxRetries) throw error;
       } catch (err) {
-        if (attempt === maxRetries || err?.response) throw err;
+        error = err;
+        retryable = !err?.response;
       }
 
       const delay = Math.min(Math.max(retryAfterMs, 1000 * 2 ** attempt), 15000);
+      const retrying = retryable && attempt < maxRetries;
+      const details = {
+        endpoint,
+        pageId: gotOptions?.pageId || requestBody.pageId,
+        collectionId: requestBody.collection?.id,
+        collectionViewId: requestBody.collectionView?.id,
+        statusCode,
+        attempt: attempt + 1,
+        maxAttempts: maxRetries + 1,
+        durationMs: Date.now() - attemptStartedAt,
+        elapsedMs: Date.now() - startedAt,
+        reason:
+          statusCode === 429
+            ? 'rate_limit'
+            : statusCode >= 500
+            ? 'server_error'
+            : statusCode >= 400
+            ? 'http_error'
+            : statusCode
+            ? 'response_error'
+            : 'network_error',
+        errorName: error?.name,
+        errorCode: error?.cause?.code || error?.code,
+        retrying,
+        retryDelayMs: retrying ? delay : 0,
+      };
+
+      // 본문·헤더·파일 URL은 기록하지 않는다. 최종 오류의 정보는 페이지 재시도 로그에도 전달한다.
+      console.warn('[notion-api] request failed', JSON.stringify(details));
+      if (error instanceof Error) error['notionRequest'] = details;
+      if (!retrying) throw error;
 
       retryAfterMs = 0;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
     return normalizeRecordMapValues(response);
+  }
+}
+
+function isDefaultPageCover(source: string): boolean {
+  if (source.startsWith('/images/page-cover/')) return true;
+
+  try {
+    const url = new URL(source);
+    return (
+      ['www.notion.so', 'notion.so', 'www.notion.com', 'notion.com', 'app.notion.com'].includes(
+        url.hostname,
+      ) && url.pathname.startsWith('/images/page-cover/')
+    );
+  } catch {
+    return false;
   }
 }
 

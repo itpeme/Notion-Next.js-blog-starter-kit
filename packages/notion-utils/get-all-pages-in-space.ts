@@ -49,9 +49,12 @@ export async function getAllPagesInSpace(
       pendingPageIds.add(pageId);
 
       queue.add(async () => {
+        const startedAt = Date.now();
+        let attemptStartedAt = startedAt;
         try {
           await pRetry(
             async () => {
+              attemptStartedAt = Date.now();
               if (targetPageId && pendingPageIds.has(targetPageId) && pageId !== targetPageId) {
                 return;
               }
@@ -162,8 +165,21 @@ export async function getAllPagesInSpace(
             },
             {
               onFailedAttempt: error => {
-                console.log(
-                  `Attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`,
+                console.warn(
+                  '[notion-crawl] page attempt failed',
+                  JSON.stringify({
+                    request: error['notionRequest'],
+                    pageId,
+                    attempt: error.attemptNumber,
+                    retriesLeft: error.retriesLeft,
+                    retrying: error.retriesLeft > 0,
+                    durationMs: Date.now() - attemptStartedAt,
+                    elapsedMs: Date.now() - startedAt,
+                    errorName: error.name,
+                    message: error.message
+                      .replace(/https?:\/\/[^\s"'<>]+/gi, '[url]')
+                      .slice(0, 300),
+                  }),
                 );
               },
               retries: 3,
