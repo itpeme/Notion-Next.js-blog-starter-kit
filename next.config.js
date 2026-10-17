@@ -1,9 +1,9 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+/* eslint-disable @typescript-eslint/no-var-requires -- Next.js CommonJS 설정 파일. */
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 });
 
-module.exports = withBundleAnalyzer({
+const config = withBundleAnalyzer({
   staticPageGenerationTimeout: 300,
   // 워드프레스 시절 주소를 새 사이트의 대응 경로로 넘긴다 (서치 콘솔 클릭 기준).
   // 글 주소는 Slug 를 그대로 유지했으므로 따로 규칙이 필요하지 않다.
@@ -75,3 +75,10 @@ module.exports = withBundleAnalyzer({
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
 });
+
+module.exports = phase => {
+  if (phase === require('next/constants').PHASE_PRODUCTION_BUILD) {
+    require('./lib/notion-build-cache').initializeNotionBuildCache();
+  }
+  return config;
+};

@@ -3,7 +3,8 @@ import { getAllPagesInSpace } from 'notion-utils';
 import ExpiryMap from 'expiry-map';
 
 import { includeNotionIdInUrls } from './config';
-import { notion } from './notion-api';
+import { getNotionPage } from './notion-api';
+import { readBuildCache, writeBuildCache } from './notion-build-cache';
 import { getCanonicalPageId } from './get-canonical-page-id';
 import { isHiddenPost } from './post-status';
 import { staticFeedsExist, writeStaticFeeds } from './generate-static-feeds';
@@ -17,68 +18,17 @@ const uuid = !!includeNotionIdInUrls;
 const SITE_MAP_TTL = 5 * 60 * 1000;
 const cache = new ExpiryMap(SITE_MAP_TTL);
 
-// 빌드는 getStaticPaths(메인 프로세스)와 페이지 렌더(워커 프로세스)가 따로 돈다.
-// 메모리 캐시는 프로세스 사이에 공유되지 않고, 페이지가 300초를 넘겨 워커가 다시 뜨면
-// 그때마다 전체 크롤링이 처음부터 시작돼 빌드가 영영 끝나지 않는다.
-// 그래서 slug -> pageId 표만 파일로 남겨 워커들이 그대로 읽게 한다.
-// (운영 Worker에는 이 파일이 없으므로 읽기가 실패하고 평소대로 노션을 조회한다.)
-const BUILD_CACHE_FILE = '.next/cache/notion-site-map.json';
-const buildCacheUsable = process.env.NODE_ENV === 'production';
-// 한 번의 빌드를 넘기기 위한 캐시다. 다음 빌드가 옛 표를 쓰지 않도록 수명을 둔다.
-const BUILD_CACHE_TTL = 2 * 60 * 60 * 1000;
-
 type CachedSiteMap = Pick<types.SiteMap, 'canonicalPageMap'> & { hiddenPageIds: string[] };
 
-function readBuildCache(): CachedSiteMap | null {
-  if (!buildCacheUsable) return null;
-
-  // 사이트맵/피드 파일이 아직 없으면 이 캐시를 쓰면 안 된다. 캐시에는 pageMap 이 없어서
-  // 파일을 만들 수 없고, 그대로 넘어가면 사이트맵 없이 배포된다.
-  // (운영 Worker 는 어차피 파일을 못 읽어 아래 try 에서 빠지므로 동작이 달라지지 않는다.)
-  if (!staticFeedsExist()) return null;
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require('fs');
-    const cached = JSON.parse(fs.readFileSync(BUILD_CACHE_FILE, 'utf8'));
-    const fresh = Date.now() - (cached?.savedAt || 0) < BUILD_CACHE_TTL;
-
-    if (fresh && cached?.canonicalPageMap && Object.keys(cached.canonicalPageMap).length > 0) {
-      return cached;
-    }
-  } catch {
-    // 파일이 없거나 fs를 쓸 수 없는 환경(운영 Worker)이면 그냥 노션을 조회한다
-  }
-
-  return null;
-}
-
-function writeBuildCache(siteMap: Partial<types.SiteMap>) {
-  if (!buildCacheUsable) return;
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require('fs');
-    fs.mkdirSync('.next/cache', { recursive: true });
-    fs.writeFileSync(
-      BUILD_CACHE_FILE,
-      JSON.stringify({
-        savedAt: Date.now(),
-        canonicalPageMap: siteMap.canonicalPageMap,
-        hiddenPageIds: siteMap.hiddenPageIds,
-      }),
-    );
-  } catch {
-    // 캐시를 못 남겨도 빌드 자체는 계속 진행한다
-  }
-}
-
 export async function getSiteMap(): Promise<types.SiteMap> {
-  const cached = readBuildCache();
+  // 원본 페이지와 주소 표 모두 이번 빌드에서만 공유한다. 이전 빌드의 표는 복원하지 않는다.
+  // 표에는 pageMap이 없으므로 사이트맵/피드가 먼저 생성되어 있어야 사용할 수 있다.
+  const cached: CachedSiteMap | null = staticFeedsExist()
+    ? readBuildCache('site-map', config.rootNotionPageId)
+    : null;
 
   if (cached) {
-    // pageMap 은 용량이 커서 파일에 담지 않는다. 지금 이 캐시를 쓰는 곳(정적 경로 목록,
-    // slug 변환)은 pageMap 을 보지 않고, pageMap 이 필요한 피드는 운영에서 따로 조회한다.
+    // 각 페이지 원본은 getNotionPage가 별도 파일로 공유한다. 주소 조회에는 표만 있으면 된다.
     return {
       site: config.site,
       pageMap: {},
@@ -87,9 +37,12 @@ export async function getSiteMap(): Promise<types.SiteMap> {
   }
 
   const partialSiteMap = await getAllPages(config.rootNotionPageId, config.rootNotionSpaceId);
-  writeBuildCache(partialSiteMap);
   // 전체 크롤링이 끝난 지금이 사이트맵/피드를 만들 수 있는 유일한 지점이다(pageMap이 여기에만 있다).
   writeStaticFeeds(partialSiteMap);
+  writeBuildCache('site-map', config.rootNotionPageId, {
+    canonicalPageMap: partialSiteMap.canonicalPageMap,
+    hiddenPageIds: partialSiteMap.hiddenPageIds,
+  });
 
   return {
     site: config.site,
@@ -106,9 +59,7 @@ async function getAllPagesImpl(
   rootNotionPageId: string,
   rootNotionSpaceId: string,
 ): Promise<Partial<types.SiteMap>> {
-  const getPage = async (pageId: string, ...args) => {
-    return notion.getPage(pageId, ...args);
-  };
+  const getPage = (pageId: string) => getNotionPage(pageId);
 
   const pageMap = await getAllPagesInSpace(rootNotionPageId, rootNotionSpaceId, getPage);
 

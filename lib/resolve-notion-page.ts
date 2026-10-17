@@ -56,10 +56,7 @@ export async function resolveNotionPage(
       pageId = siteMap?.canonicalPageMap[rawPageId];
 
       if (pageId) {
-        // TODO: we're not re-using the page recordMap from siteMaps because it is
-        // cached aggressively
-        // recordMap = siteMap.pageMap[pageId]
-
+        // getPage는 빌드 중 수집한 원본의 복사본을 사용하고 메뉴 정보를 병합한다.
         recordMap = await getPage(pageId, options);
 
         if (useUriToPageIdCache) {

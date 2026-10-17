@@ -6,7 +6,7 @@ import pMemoize from 'p-memoize';
 
 import { navigationStyle, navigationLinks, footerLinks } from './config';
 import { getSearchablePageIds } from './get-site-map';
-import { notion } from './notion-api';
+import { notion, getNotionPage } from './notion-api';
 
 // 메뉴에 연결된 페이지 정보는 5분마다 새로 불러온다 (제목·아이콘 변경 반영)
 const NAVIGATION_PAGES_TTL = 5 * 60 * 1000;
@@ -26,7 +26,7 @@ const getNavigationLinkPages = pMemoize(
       return pMap(
         navigationLinkPageIds,
         async navigationLinkPageId =>
-          notion.getPage(navigationLinkPageId, {
+          getNotionPage(navigationLinkPageId, {
             chunkLimit: 1,
             fetchMissingBlocks: false,
             fetchCollections: false,
@@ -78,7 +78,7 @@ export async function getPage(
   pageId: string,
   options: GetPageOptions = {},
 ): Promise<ExtendedRecordMap> {
-  let recordMap = await notion.getPage(pageId, options);
+  let recordMap = await getNotionPage(pageId, options);
 
   if (navigationStyle !== 'default') {
     // ensure that any pages linked to in the custom navigation header have
