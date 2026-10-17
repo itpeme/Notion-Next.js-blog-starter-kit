@@ -67,7 +67,11 @@ export const AdUnit: React.FC<AdUnitProps> = ({
 
   // 개발 환경에서는 광고 대신 자리 표시만 보여줘서 배치를 확인할 수 있게 한다
   if (isDev) {
-    return <div className={cs('ad-placeholder', className)}>광고 영역 (개발 환경 미리보기)</div>;
+    return (
+      <div className={cs('ad-placeholder', className)} style={{ width: '100%', minWidth: 0 }}>
+        광고 영역 (개발 환경 미리보기)
+      </div>
+    );
   }
 
   if (!isAdsEnabled) return null;
@@ -75,7 +79,13 @@ export const AdUnit: React.FC<AdUnitProps> = ({
   return (
     <div
       className={className}
-      style={{ margin: '2rem 0', textAlign: 'center', overflow: 'hidden' }}
+      style={{
+        width: '100%',
+        minWidth: 0,
+        margin: '2rem 0',
+        textAlign: 'center',
+        overflow: 'hidden',
+      }}
     >
       <ins
         className="adsbygoogle"
