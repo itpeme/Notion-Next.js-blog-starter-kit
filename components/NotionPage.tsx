@@ -20,7 +20,7 @@ import * as types from 'lib/types';
 import { useDarkMode } from 'lib/use-dark-mode';
 import { PageBlock } from 'notion-types';
 // utils
-import { formatDate, getBlockTitle, getPageProperty } from 'notion-utils';
+import { formatDate, getBlockTitle, getPageProperty, parsePageId } from 'notion-utils';
 
 import { loadPrismComponentsWithRetry } from '~/lib/load-prism-components';
 
@@ -185,7 +185,8 @@ export const NotionPage: React.FC<types.PageProps> = ({
   }, [site, recordMap, lite, draftView]);
 
   // 홈 화면 전용 데이터 (추천 슬라이드, 인기 글, 카테고리 목록)
-  const isHome = !!site && pageId === site.rootNotionPageId;
+  // 빌드는 하이픈 없는 ID, 관리자 갱신은 UUID를 전달하므로 같은 형식으로 비교한다.
+  const isHome = !!site && !!pageId && parsePageId(pageId) === parsePageId(site.rootNotionPageId);
   const homePosts = React.useMemo(
     () => (isHome && recordMap ? getHomePosts(recordMap) : []),
     [isHome, recordMap],
@@ -249,8 +250,6 @@ export const NotionPage: React.FC<types.PageProps> = ({
 
   const socialDescription = getPageProperty<string>('설명', block, recordMap) || config.description;
 
-  const isIndexPage = pageId === site.rootNotionPageId;
-
   const hasCollectionView = Object.keys(recordMap.collection_query).length;
 
   return (
@@ -271,8 +270,8 @@ export const NotionPage: React.FC<types.PageProps> = ({
       )}
 
       <NotionRenderer
-        className={cs(isIndexPage ? 'indexPage' : 'childPage', { hasCollectionView })}
-        bodyClassName={cs(styles.notion, isIndexPage && 'index-page')}
+        className={cs(isHome ? 'indexPage' : 'childPage', { hasCollectionView })}
+        bodyClassName={cs(styles.notion, isHome && 'index-page')}
         darkMode={isDarkMode}
         components={components}
         recordMap={recordMap}

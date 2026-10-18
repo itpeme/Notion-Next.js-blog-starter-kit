@@ -35,6 +35,11 @@ try {
     assert.equal(response.status, expected, `${url}: ${body.slice(0, 400)}`);
     return { response, body };
   }
+  function checkHomeLayout(body) {
+    assert.ok(/class="[^"]*\bindexPage\b/.test(body), 'home layout class is preserved');
+    assert.ok(/class="[^"]*\bindex-page\b/.test(body), 'home content layout is preserved');
+    assert.ok(body.includes('class="home-sidebar"'), 'home sidebar is rendered');
+  }
   const headers = { Authorization: `Bearer ${secret}` };
   const newId = randomUUID();
   const newSlug = `갱신-검증.${Date.now()}`;
@@ -58,8 +63,9 @@ try {
   }
   console.log('Checking bootstrap pages and authentication');
   await check('/admin');
-  await check('/');
-  await check('/9');
+  checkHomeLayout((await check('/')).body);
+  const originalPost = await check('/9');
+  assert.ok(!originalPost.body.includes('class="home-sidebar"'), 'posts do not use home layout');
   await check('/소개');
   await check(`/${encoded}`, 404);
   await check('/api/admin/refresh', 401, { method: 'POST' });
@@ -76,12 +82,18 @@ try {
     const base = `${prefix}/revisions/${revision}`;
     for (const file of await fs.readdir(path.join(snapshot, 'pages'))) {
       let saved = JSON.parse(await fs.readFile(path.join(snapshot, 'pages', file), 'utf8'));
-      if (includePost && file === `${index.rootPageId}.json`) {
-        saved.recordMap.block[newId] = structuredClone(main);
-        const views = Object.values(saved.recordMap.collection_query[main.value.parent_id]);
-        for (const view of views)
-          if (view.collection_group_results?.blockIds)
-            view.collection_group_results.blockIds.unshift(newId);
+      if (file === `${index.rootPageId}.json`) {
+        // 관리자 수집은 빌드와 달리 하이픈 있는 UUID를 pageId로 저장한다.
+        saved.pageId = saved.recordMap.block[Object.keys(saved.recordMap.block)[0]].value.id;
+        assert.notEqual(saved.pageId, saved.site.rootNotionPageId);
+        assert.equal(saved.pageId.replace(/-/g, ''), saved.site.rootNotionPageId);
+        if (includePost) {
+          saved.recordMap.block[newId] = structuredClone(main);
+          const views = Object.values(saved.recordMap.collection_query[main.value.parent_id]);
+          for (const view of views)
+            if (view.collection_group_results?.blockIds)
+              view.collection_group_results.blockIds.unshift(newId);
+        }
       }
       await bucket.put(`${base}/pages/${file}`, JSON.stringify(saved));
     }
@@ -109,6 +121,7 @@ try {
   assert.ok(post.body.includes('관리자 갱신 통합 검증 글'));
   assert.ok(post.body.includes(buildId), 'same Next.js build');
   const home = await check('/');
+  checkHomeLayout(home.body);
   assert.ok(home.body.includes('관리자 갱신 통합 검증 글'), 'home list refreshes');
   const data = await check(`/_next/data/${buildId}/${encoded}.json`);
   assert.equal(JSON.parse(data.body).pageProps.pageId, newId);
@@ -117,6 +130,7 @@ try {
   await check('/소개');
   console.log('Removing published address without a rebuild');
   await publishFixture(false);
+  checkHomeLayout((await check('/')).body);
   await check(`/${encoded}`, 404);
   await check(`/_next/data/${buildId}/${encoded}.json`, 404);
 
@@ -140,6 +154,7 @@ try {
       }
       assert.notEqual(status.state, 'failed', status.error);
       if (status.state === 'complete') {
+        checkHomeLayout((await check('/')).body);
         assert.equal(
           (await check('/')).response.headers.get('X-Blog-Revision'),
           status.published.revision,
