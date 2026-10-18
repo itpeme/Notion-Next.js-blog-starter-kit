@@ -22,6 +22,12 @@ export interface ContentBucket {
     body: ReadableStream;
   } | null>;
   put(key: string, value: string): Promise<unknown>;
+  list(options: { prefix: string; cursor?: string; limit: number }): Promise<{
+    objects: { key: string; size: number; uploaded: Date }[];
+    truncated: boolean;
+    cursor?: string;
+  }>;
+  delete(keys: string[]): Promise<void>;
 }
 
 export interface ContentEnv {

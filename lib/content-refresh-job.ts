@@ -14,6 +14,7 @@ import { isHiddenPost, showDrafts } from './post-status';
 import { prepareNotionPage } from './prepare-notion-page';
 import { mergeRecordMapsPreferFirst, navigationLinkPageIds } from './notion';
 import * as config from './config';
+import { cleanupPublishedContent } from './content-cleanup';
 
 interface JobState {
   storage: {
@@ -37,6 +38,26 @@ export class BlogRefreshJob {
   constructor(private readonly ctx: JobState, private readonly env: ContentEnv) {}
 
   async fetch(request: Request): Promise<Response> {
+    if (new URL(request.url).pathname === '/cleanup') {
+      if (!['GET', 'POST'].includes(request.method)) return new Response(null, { status: 405 });
+      return this.ctx.blockConcurrencyWhile(async () => {
+        if (isActive(await this.ctx.storage.get<RefreshStatus>('job')))
+          return json({ state: 'skipped', reason: 'refresh-active' }, 409);
+        try {
+          const result = await cleanupPublishedContent(
+            this.env.NEXT_INC_CACHE_R2_BUCKET,
+            contentStorePrefix(config.rootNotionPageId, this.env.BLOG_CONTENT_PREFIX),
+            config.rootNotionPageId,
+            request.method === 'POST',
+          );
+          if (request.method === 'POST') await this.ctx.storage.put('cleanup', result);
+          return json(result);
+        } catch (error) {
+          console.error('[blog-cleanup] failed', error?.message);
+          return json({ state: 'failed', error: '게시 데이터 정리를 완료하지 못했습니다.' }, 503);
+        }
+      });
+    }
     let status = await this.ctx.storage.get<RefreshStatus>('job');
     if (
       isActive(status) &&

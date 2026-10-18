@@ -10,7 +10,11 @@ function reply(message: string, status: number) {
   });
 }
 
-export async function handleAdminRefresh(request: Request, env: ContentEnv): Promise<Response> {
+export async function handleAdminRefresh(
+  request: Request,
+  env: ContentEnv,
+  action: 'job' | 'cleanup' = 'job',
+): Promise<Response> {
   if (!['GET', 'POST'].includes(request.method)) return reply('지원하지 않는 요청입니다.', 405);
   const secret = env.ADMIN_REFRESH_SECRET;
   if (!secret || secret.length < 32) return reply('관리자 비밀번호 설정이 필요합니다.', 503);
@@ -26,7 +30,7 @@ export async function handleAdminRefresh(request: Request, env: ContentEnv): Pro
   const prefix = contentStorePrefix(rootNotionPageId, env.BLOG_CONTENT_PREFIX);
   const job = env.BLOG_REFRESH.get(env.BLOG_REFRESH.idFromName(prefix));
   const response = await job.fetch(
-    new Request('https://refresh.internal/job', { method: request.method }),
+    new Request(`https://refresh.internal/${action}`, { method: request.method }),
   );
   return new Response(response.body, {
     status: response.status,

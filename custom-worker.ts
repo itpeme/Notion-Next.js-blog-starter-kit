@@ -21,7 +21,12 @@ export default {
     if (pathname === BOOTSTRAP_CONTENT_PATH || pathname.startsWith(`${BOOTSTRAP_CONTENT_PATH}/`)) {
       return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
     }
-    if (pathname === '/api/admin/refresh') return handleAdminRefresh(request, env);
+    if (pathname === '/api/admin/refresh' || pathname === '/api/admin/cleanup')
+      return handleAdminRefresh(
+        request,
+        env,
+        pathname === '/api/admin/cleanup' ? 'cleanup' : 'job',
+      );
     if (
       pathname.startsWith('/_next/static/') ||
       pathname.startsWith('/fonts/') ||
@@ -67,5 +72,16 @@ export default {
       statusText: response.statusText,
       headers,
     });
+  },
+  async scheduled(_controller: unknown, env: ContentEnv): Promise<void> {
+    const prefix = contentStorePrefix(rootNotionPageId, env.BLOG_CONTENT_PREFIX);
+    const job = env.BLOG_REFRESH.get(env.BLOG_REFRESH.idFromName(prefix));
+    const response = await job.fetch(
+      new Request('https://refresh.internal/cleanup', { method: 'POST' }),
+    );
+    const result = await response.json();
+    console.log('[blog-cleanup]', JSON.stringify(result));
+    if (!response.ok && response.status !== 409)
+      throw new Error('Scheduled content cleanup failed');
   },
 };

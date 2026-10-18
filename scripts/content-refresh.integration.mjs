@@ -12,7 +12,7 @@ import { createTestHarness } from 'wrangler';
 const root = process.cwd();
 const snapshot = path.join(root, 'public/_blog-data');
 const index = JSON.parse(await fs.readFile(path.join(snapshot, 'index.json'), 'utf8'));
-const prefix = `integration/${randomUUID()}`;
+const prefix = `published-content/v1/integration-${randomUUID()}`;
 const secret = randomUUID() + randomUUID();
 const server = createTestHarness({
   root,
@@ -101,6 +101,7 @@ try {
   await check(`/${encoded}`, 404);
   await check(fileUrl, 404);
   await check('/api/admin/refresh', 401, { method: 'POST' });
+  await check('/api/admin/cleanup', 401, { method: 'POST' });
   for (const url of [
     '/_blog-data/index.json',
     '/%5Fblog-data%2Findex.json',
@@ -188,6 +189,51 @@ try {
   await check(fileUrl, 404);
   await check(`/_next/data/${buildId}/${encoded}.json`, 404);
 
+  console.log('Checking cleanup preview and execution against native R2 storage');
+  const preview = JSON.parse((await check('/api/admin/cleanup', 200, { headers })).body);
+  assert.equal(preview.state, 'planned');
+  assert.equal(preview.candidateObjects, 0, 'recent snapshots must be preserved');
+  const cleanup = JSON.parse(
+    (await check('/api/admin/cleanup', 200, { method: 'POST', headers })).body,
+  );
+  assert.equal(cleanup.deletedObjects, 0);
+  const scheduled = await worker.scheduled({ cron: '20 18 * * *', scheduledTime: new Date() });
+  assert.equal(scheduled.outcome, 'ok', 'native scheduled handler completes');
+  // Age only this isolated test inventory through the internal function; the public API has no clock override.
+  await publishFixture(false);
+  const current = await publishFixture(false);
+  const orphan = `${prefix}/html/${randomUUID()}/test-build/orphan.cache`;
+  await bucket.put(orphan, 'orphan');
+  const { build } = await import('esbuild');
+  const { outputFiles } = await build({
+    entryPoints: [path.join(root, 'lib/content-cleanup.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    write: false,
+  });
+  const { cleanupPublishedContent } = await import(
+    `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`
+  );
+  const expired = await cleanupPublishedContent(
+    bucket,
+    prefix,
+    index.rootPageId,
+    true,
+    Date.now() + 8 * 86400000,
+  );
+  assert.equal(expired.state, 'complete');
+  assert.ok(expired.deletedObjects > 100, 'an obsolete snapshot and cache were deleted');
+  assert.equal(await bucket.get(`${prefix}/revisions/${revision}/index.json`), null);
+  assert.equal(await bucket.get(orphan), null);
+  assert.equal((await (await bucket.get(`${prefix}/current.json`)).json()).revision, current);
+  for (const retained of expired.retainedRevisions)
+    assert.ok(await bucket.get(`${prefix}/revisions/${retained}/index.json`));
+  const afterCleanup = await check('/');
+  checkHomeLayout(afterCleanup.body);
+  assert.equal(afterCleanup.response.headers.get('X-Blog-Revision'), current);
+  await check('/9');
+
   if (process.argv.includes('--live-notion')) {
     console.log('Starting real Notion refresh through authenticated Durable Object alarm');
     const started = await check('/api/admin/refresh', 202, { method: 'POST', headers });
@@ -224,7 +270,7 @@ try {
     }
   }
   console.log(
-    'PASS: HTML, client navigation JSON, home, XML, stable files, private assets, and cache revision switch',
+    'PASS: HTML, client navigation JSON, home, XML, stable files, private assets, cache revision switch, and native R2 cleanup',
   );
 } finally {
   const errors = server.getLogs().filter(log => log.level === 'error');

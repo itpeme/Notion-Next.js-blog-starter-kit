@@ -20,6 +20,7 @@ before(async () => {
         export { rootNotionPageId, site } from './lib/config';
         export { createNotionFileHandler } from './lib/notion-file';
         export { withStableNotionFiles, notionFileUrl } from './lib/notion-file-url';
+        export { cleanupPublishedContent } from './lib/content-cleanup';
       `,
       resolveDir: root,
     },
@@ -126,6 +127,8 @@ function setup() {
     ]),
   );
   const values = new Map();
+  const uploaded = new Map();
+  const deleted = [];
   const writes = [];
   const bucket = {
     async get(key) {
@@ -140,12 +143,38 @@ function setup() {
     async put(key, value) {
       writes.push(key);
       values.set(key, value);
+      uploaded.set(key, new Date());
+    },
+    async list({ prefix, cursor, limit }) {
+      const keys = [...values.keys()].filter(key => key.startsWith(prefix)).sort();
+      const offset = cursor ? Number(cursor) : 0;
+      // Small pages deliberately exercise cursor handling with fewer results than requested.
+      const count = Math.min(limit, 3);
+      const objects = keys.slice(offset, offset + count).map(key => ({
+        key,
+        size: Buffer.byteLength(values.get(key)),
+        uploaded: uploaded.get(key) || new Date(),
+      }));
+      return {
+        objects,
+        truncated: offset + count < keys.length,
+        cursor: String(offset + count),
+      };
+    },
+    async delete(keys) {
+      deleted.push(...keys);
+      for (const key of keys) {
+        values.delete(key);
+        uploaded.delete(key);
+      }
     },
   };
   const storage = new Map();
   fixture = {
     pages,
     values,
+    uploaded,
+    deleted,
     writes,
     storage,
     getPage: async id => structuredClone(pages[id] || { block: {}, collection: {} }),
@@ -607,4 +636,254 @@ test('bootstrap snapshots support stable files and unrelated navigation pages ca
   f.values.set(`${base}/${fileKey}`, JSON.stringify(saved));
   assert.equal((await handler(fileRequest(), f.env)).status, 404);
   assert.equal(calls, 1);
+});
+
+function cleanupFixture() {
+  const f = setup();
+  f.prefix = api.contentStorePrefix(api.rootNotionPageId);
+  f.cleanupRevision = n => `${String(n).padStart(8, '0')}-0000-4000-8000-000000000000`;
+  f.seed = (key, ageDays) => {
+    f.values.set(key, '{}');
+    f.uploaded.set(key, new Date(Date.now() - ageDays * 86400000));
+    return key;
+  };
+  f.seedSnapshot = (n, ageDays, complete = true) => {
+    const revision = f.cleanupRevision(n);
+    for (const file of complete
+      ? [
+          'index.json',
+          'feed.xml',
+          'sitemap.xml',
+          `pages/${api.rootNotionPageId.replace(/-/g, '')}.json`,
+        ]
+      : ['pages/partial.json'])
+      f.seed(`${f.prefix}/revisions/${revision}/${file}`, ageDays);
+    f.seed(`${f.prefix}/html/${revision}/build/page.cache`, ageDays);
+    return revision;
+  };
+  f.current = f.seedSnapshot(1, 90);
+  f.previous = [f.seedSnapshot(2, 10), f.seedSnapshot(3, 11)];
+  f.obsolete = f.seedSnapshot(4, 12);
+  f.pointerKey = `${f.prefix}/current.json`;
+  f.values.set(f.pointerKey, JSON.stringify({ revision: f.current }));
+  f.cleanup = execute =>
+    api.cleanupPublishedContent(
+      f.env.NEXT_INC_CACHE_R2_BUCKET,
+      f.prefix,
+      api.rootNotionPageId,
+      execute,
+    );
+  return f;
+}
+
+test('cleanup previews without writes and preserves current, two backups, recent and unrelated data', async () => {
+  const f = cleanupFixture();
+  const recent = f.seedSnapshot(5, 1, false);
+  const abandoned = f.seedSnapshot(6, 20, false);
+  const orphan = f.seed(`${f.prefix}/html/${f.cleanupRevision(7)}/build/orphan.cache`, 30);
+  const unrelated = [
+    'incremental-cache/old-build/file.cache',
+    'other-site/revisions/file.json',
+    `${f.prefix}/revisions/unrecognized/file.json`,
+    `${f.prefix}/html/unrecognized/file.cache`,
+  ].map(key => f.seed(key, 90));
+  const before = new Map(f.values);
+  const preview = await f.cleanup(false);
+  assert.equal(preview.state, 'planned');
+  assert.equal(preview.candidateObjects, 8);
+  assert.deepEqual(new Set(preview.retainedRevisions), new Set([f.current, ...f.previous]));
+  assert.deepEqual(f.values, before);
+  assert.equal(f.deleted.length, 0);
+  const result = await f.cleanup(true);
+  assert.equal(result.state, 'complete');
+  assert.equal(result.deletedObjects, 8);
+  assert.equal(result.deletedBytes, 16);
+  assert.equal(f.values.has(orphan), false);
+  for (const key of f.deleted) assert.ok(!f.values.has(key));
+  for (const id of [f.obsolete, abandoned])
+    assert.ok(![...f.values.keys()].some(key => key.includes(id)));
+  for (const id of [f.current, ...f.previous, recent])
+    assert.ok([...f.values.keys()].some(key => key.includes(id)));
+  for (const key of unrelated) assert.ok(f.values.has(key));
+  assert.equal(JSON.parse(f.values.get(f.pointerKey)).revision, f.current);
+  assert.equal((await f.cleanup(true)).deletedObjects, 0);
+});
+
+test('cleanup keeps whole snapshots with a recent write and retains the two latest complete backups', async () => {
+  const f = cleanupFixture();
+  const recentComplete = f.seedSnapshot(5, 1);
+  f.seed(`${f.prefix}/revisions/${f.obsolete}/pages/recent.json`, 1);
+  const result = await f.cleanup(true);
+  assert.deepEqual(
+    new Set(result.retainedRevisions),
+    new Set([f.current, recentComplete, f.obsolete]),
+  );
+  assert.ok(f.deleted.every(key => f.previous.some(id => key.includes(id))));
+  assert.ok(f.values.has(`${f.prefix}/revisions/${f.obsolete}/index.json`));
+});
+
+test('cleanup refuses missing or malformed pointers and incomplete active snapshots', async () => {
+  for (const value of [null, '{broken', JSON.stringify({ revision: '../escape' })]) {
+    const f = cleanupFixture();
+    if (value === null) f.values.delete(f.pointerKey);
+    else f.values.set(f.pointerKey, value);
+    await assert.rejects(f.cleanup(true));
+    assert.equal(f.deleted.length, 0);
+  }
+  const f = cleanupFixture();
+  f.values.delete(`${f.prefix}/revisions/${f.current}/feed.xml`);
+  await assert.rejects(f.cleanup(true), /incomplete/);
+  assert.equal(f.deleted.length, 0);
+});
+
+test('cleanup rejects unscoped prefixes and incomplete or invalid inventories before deleting', async () => {
+  const f = cleanupFixture();
+  for (const prefix of ['', 'published-content', 'published-content/v1/../escape'])
+    await assert.rejects(
+      api.cleanupPublishedContent(
+        f.env.NEXT_INC_CACHE_R2_BUCKET,
+        prefix,
+        api.rootNotionPageId,
+        true,
+      ),
+      /scoped/,
+    );
+  const bucket = f.env.NEXT_INC_CACHE_R2_BUCKET;
+  const list = bucket.list.bind(bucket);
+  bucket.list = async options => {
+    if (options.prefix.endsWith('/html/')) throw new Error('R2 unavailable');
+    return list(options);
+  };
+  await assert.rejects(f.cleanup(true), /unavailable/);
+  bucket.list = async () => ({ objects: [], truncated: true });
+  await assert.rejects(f.cleanup(true), /cursor/);
+  bucket.list = async () => ({
+    objects: [{ key: 'other-site/file', size: 1, uploaded: new Date() }],
+    truncated: false,
+  });
+  await assert.rejects(f.cleanup(true), /Invalid storage inventory/);
+  assert.equal(f.deleted.length, 0);
+});
+
+test('cleanup rechecks the current revision before deletion', async () => {
+  const f = cleanupFixture();
+  const bucket = f.env.NEXT_INC_CACHE_R2_BUCKET;
+  const list = bucket.list.bind(bucket);
+  bucket.list = async options => {
+    const result = await list(options);
+    if (options.prefix.endsWith('/html/') && !result.truncated)
+      f.values.set(f.pointerKey, JSON.stringify({ revision: f.previous[0] }));
+    return result;
+  };
+  await assert.rejects(f.cleanup(true), /revision changed/);
+  assert.equal(f.deleted.length, 0);
+});
+
+test('cleanup stops later deletion batches when the published revision changes', async () => {
+  const f = cleanupFixture();
+  const orphan = f.cleanupRevision(8);
+  for (let n = 0; n < 300; n++) f.seed(`${f.prefix}/html/${orphan}/build/${n}.cache`, 30);
+  const bucket = f.env.NEXT_INC_CACHE_R2_BUCKET;
+  const remove = bucket.delete.bind(bucket);
+  bucket.delete = async keys => {
+    await remove(keys);
+    f.values.set(f.pointerKey, JSON.stringify({ revision: f.previous[0] }));
+  };
+  await assert.rejects(f.cleanup(true), /revision changed/);
+  assert.equal(f.deleted.length, 200);
+  assert.ok(f.values.has(`${f.prefix}/revisions/${f.current}/index.json`));
+  assert.ok(f.values.has(`${f.prefix}/revisions/${f.previous[0]}/index.json`));
+});
+
+test('cleanup fails closed on repeating cursors, invalid dates and oversized inventories', async () => {
+  const f = cleanupFixture();
+  const bucket = f.env.NEXT_INC_CACHE_R2_BUCKET;
+  bucket.list = async () => ({ objects: [], truncated: true, cursor: 'repeated' });
+  await assert.rejects(f.cleanup(true), /cursor/);
+  bucket.list = async () => ({
+    objects: [{ key: `${f.prefix}/revisions/bad`, size: 1, uploaded: new Date('invalid') }],
+    truncated: false,
+  });
+  await assert.rejects(f.cleanup(true), /inventory/);
+  let page = 0;
+  bucket.list = async () => ({
+    objects: Array.from({ length: 1000 }, (_, n) => ({
+      key: `${f.prefix}/revisions/${page}/${n}`,
+      size: 1,
+      uploaded: new Date(),
+    })),
+    truncated: true,
+    cursor: String(++page),
+  });
+  await assert.rejects(f.cleanup(true), /limit exceeded/);
+  assert.equal(f.deleted.length, 0);
+});
+
+test('cleanup caps each execution and can continue safely on the next run', async () => {
+  const f = cleanupFixture();
+  const orphan = f.cleanupRevision(8);
+  for (let n = 0; n < 2100; n++) f.seed(`${f.prefix}/html/${orphan}/build/${n}.cache`, 30);
+  const result = await f.cleanup(true);
+  assert.equal(result.state, 'partial');
+  assert.equal(result.deletedObjects, 2000);
+  assert.equal(result.remainingObjects, 105);
+  const next = await f.cleanup(true);
+  assert.equal(next.state, 'complete');
+  assert.equal(next.deletedObjects, 105);
+  assert.ok(f.values.has(`${f.prefix}/revisions/${f.current}/index.json`));
+});
+
+function cleanupRequest(f, method = 'GET', pathname = '/api/admin/cleanup') {
+  return new Request(`https://blog.example${pathname}`, {
+    method,
+    headers: { Authorization: `Bearer ${f.env.ADMIN_REFRESH_SECRET}` },
+  });
+}
+
+test('cleanup API uses existing admin authentication, origin validation and no-store responses', async () => {
+  const f = cleanupFixture();
+  const url = 'https://blog.example/api/admin/cleanup';
+  assert.equal((await api.worker.fetch(new Request(url, { method: 'POST' }), f.env)).status, 401);
+  assert.equal((await api.worker.fetch(new Request(url, { method: 'DELETE' }), f.env)).status, 405);
+  const crossOrigin = cleanupRequest(f, 'POST');
+  crossOrigin.headers.set('Origin', 'https://other.example');
+  assert.equal((await api.worker.fetch(crossOrigin, f.env)).status, 403);
+  const preview = await api.worker.fetch(cleanupRequest(f), f.env);
+  assert.equal(preview.status, 200);
+  assert.equal(preview.headers.get('cache-control'), 'no-store');
+  assert.equal((await preview.json()).state, 'planned');
+  assert.equal(f.deleted.length, 0);
+  const response = await api.worker.fetch(cleanupRequest(f, 'POST', '/api/admin/%63leanup'), f.env);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).state, 'complete');
+  assert.equal(f.storage.has('job'), false);
+  assert.equal(f.storage.get('cleanup').deletedObjects, 5);
+});
+
+test('scheduled cleanup skips an active refresh and cleans without starting a publish job', async () => {
+  const f = cleanupFixture();
+  await f.job.fetch(new Request('https://internal/job', { method: 'POST' }));
+  const active = structuredClone(f.storage.get('job'));
+  assert.equal((await api.worker.fetch(cleanupRequest(f, 'POST'), f.env)).status, 409);
+  await api.worker.scheduled({}, f.env);
+  assert.deepEqual(f.storage.get('job'), active);
+  assert.equal(f.deleted.length, 0);
+  f.storage.set('job', { ...active, state: 'complete' });
+  await api.worker.scheduled({}, f.env);
+  assert.equal(f.storage.get('cleanup').state, 'complete');
+  assert.equal(f.deleted.length, 5);
+  assert.equal(f.storage.get('job').id, active.id);
+});
+
+test('cleanup storage errors leave publication status unchanged and scheduled failures surface', async () => {
+  const f = cleanupFixture();
+  const status = { id: f.current, state: 'complete' };
+  f.storage.set('job', status);
+  f.env.NEXT_INC_CACHE_R2_BUCKET.delete = async () => {
+    throw new Error('R2 delete failed');
+  };
+  assert.equal((await api.worker.fetch(cleanupRequest(f, 'POST'), f.env)).status, 503);
+  assert.deepEqual(f.storage.get('job'), status);
+  assert.equal(JSON.parse(f.values.get(f.pointerKey)).revision, f.current);
+  await assert.rejects(api.worker.scheduled({}, f.env), /Scheduled content cleanup failed/);
 });
