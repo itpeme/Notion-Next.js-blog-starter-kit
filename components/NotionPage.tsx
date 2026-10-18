@@ -16,6 +16,7 @@ import { getFeaturedPosts, getHomePosts } from 'lib/home-posts';
 import { mapImageUrl } from 'lib/map-image-url';
 import { getCanonicalPageUrl, mapPageUrl } from 'lib/map-page-url';
 import { searchNotion } from 'lib/search-notion';
+import { NOTION_FILE_PATH, withStableNotionFiles } from 'lib/notion-file-url';
 import * as types from 'lib/types';
 import { useDarkMode } from 'lib/use-dark-mode';
 import { PageBlock } from 'notion-types';
@@ -141,13 +142,20 @@ const propertyTextValue = ({ schema, pageHeader }, defaultFn: () => React.ReactN
 
 export const NotionPage: React.FC<types.PageProps> = ({
   site,
-  recordMap,
+  recordMap: originalRecordMap,
   error,
   pageId,
   draftView,
 }) => {
   const router = useRouter();
   const lite = useSearchParam('lite');
+  const recordMap = React.useMemo(
+    () =>
+      draftView || config.isDev
+        ? originalRecordMap
+        : withStableNotionFiles(originalRecordMap, pageId),
+    [originalRecordMap, pageId, draftView],
+  );
 
   const components = React.useMemo(
     () => ({
@@ -259,7 +267,11 @@ export const NotionPage: React.FC<types.PageProps> = ({
         site={site}
         title={title}
         description={socialDescription}
-        image={socialImage}
+        image={
+          socialImage?.startsWith(`${NOTION_FILE_PATH}?`)
+            ? new URL(socialImage, config.host).toString()
+            : socialImage
+        }
         url={canonicalPageUrl}
       />
       {isLiteMode && <BodyClassName className="notion-lite" />}

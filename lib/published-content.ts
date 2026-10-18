@@ -34,6 +34,10 @@ async function read<T>(env: ContentEnv, file: string): Promise<T> {
 export async function readPublishedIndex(): Promise<PublishedIndex | null> {
   const env = runtimeEnv();
   if (!env) return null;
+  return readPublishedIndexFromEnv(env);
+}
+
+export async function readPublishedIndexFromEnv(env: ContentEnv): Promise<PublishedIndex> {
   const index = await read<PublishedIndex>(env, 'index.json');
   if (index.schema !== 1 || index.rootPageId !== config.rootNotionPageId) {
     throw new Error('Published content version does not match this site');
@@ -44,7 +48,15 @@ export async function readPublishedIndex(): Promise<PublishedIndex | null> {
 export async function readPublishedPage(rawPageId?: string): Promise<SavedPage | null> {
   const env = runtimeEnv();
   if (!env) return null;
-  const index = await readPublishedIndex();
+  return readPublishedPageFromEnv(env, rawPageId);
+}
+
+export async function readPublishedPageFromEnv(
+  env: ContentEnv,
+  rawPageId?: string,
+  index?: PublishedIndex,
+): Promise<SavedPage> {
+  index = index || (await readPublishedIndexFromEnv(env));
   const allowed = new Set(Object.values(index.canonicalPageMap));
   const parsed = rawPageId ? parsePageId(rawPageId) : parsePageId(config.rootNotionPageId);
   const pageId =

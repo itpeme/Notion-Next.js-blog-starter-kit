@@ -18,6 +18,8 @@ before(async () => {
         export { readPublishedPage, readPublishedIndex } from './lib/published-content';
         export { contentStorePrefix, revisionKey } from './lib/content-paths';
         export { rootNotionPageId, site } from './lib/config';
+        export { createNotionFileHandler } from './lib/notion-file';
+        export { withStableNotionFiles, notionFileUrl } from './lib/notion-file-url';
       `,
       resolveDir: root,
     },
@@ -386,4 +388,223 @@ test('a failed collection query cannot replace an existing blog with an empty li
   }
   assert.equal(f.storage.get('job').state, 'failed');
   assert.equal(f.values.get(key), previous);
+});
+
+const fileId = '66666666-6666-4666-8666-666666666666';
+const originalFileSource = `attachment:${fileId}:example.pdf`;
+function addFile(f, type = 'file', source = originalFileSource) {
+  f.pages[postId].block[postId].value.content.push(fileId);
+  for (const page of Object.values(f.pages)) {
+    page.block[fileId] = {
+      value: {
+        id: fileId,
+        type,
+        parent_id: postId,
+        parent_table: 'block',
+        properties: { source: [[source]], title: [['example.pdf']] },
+      },
+    };
+    page.signed_urls = {
+      [fileId]: 'https://file.notion.so/expired?expirationTimestamp=1&signature=OLD',
+    };
+  }
+}
+const fileRequest = (pageId = postId, blockId = fileId, method = 'GET') =>
+  new Request(`https://blog.example${api.notionFileUrl(pageId, blockId)}`, { method });
+const freshUrl = () =>
+  `https://file.notion.so/fresh?expirationTimestamp=${Date.now() + 3600000}&signature=NEW`;
+async function publishFiles(f) {
+  f.env.BLOG_CONTENT_REVISION = (await publish(f)).revision;
+}
+
+test('rendering uses stable file links for uploaded media and covers without mutating snapshots', () => {
+  const f = setup();
+  for (const type of ['file', 'image', 'pdf', 'audio', 'video']) {
+    addFile(f, type);
+    const original = structuredClone(f.pages[postId]);
+    const rendered = api.withStableNotionFiles(original, postId);
+    assert.equal(rendered.signed_urls[fileId], api.notionFileUrl(postId, fileId));
+    assert.equal(
+      rendered.block[fileId].value.properties.source[0][0],
+      api.notionFileUrl(postId, fileId),
+    );
+    assert.equal(original.block[fileId].value.properties.source[0][0], originalFileSource);
+    assert.ok(original.signed_urls[fileId].includes('signature=OLD'));
+  }
+  const original = f.pages[postId];
+  original.block[postId].value.format = { page_cover: originalFileSource };
+  const rendered = api.withStableNotionFiles(original, postId);
+  assert.equal(rendered.block[postId].value.format.page_cover, api.notionFileUrl(postId, postId));
+  assert.equal(original.block[postId].value.format.page_cover, originalFileSource);
+  original.block[fileId].value.properties.source = [['https://external.example/audio.mp3']];
+  assert.equal(api.withStableNotionFiles(original, postId).block[fileId], original.block[fileId]);
+});
+
+test('expired stored URLs are re-signed from the published source, concurrent requests share a short cache', async () => {
+  const f = setup();
+  addFile(f);
+  await publishFiles(f);
+  let calls = 0;
+  const signed = freshUrl();
+  const handler = api.createNotionFileHandler(async (url, init) => {
+    calls++;
+    assert.equal(url, 'https://www.notion.so/api/v3/getSignedFileUrls');
+    assert.ok(init.signal);
+    assert.deepEqual(JSON.parse(init.body), {
+      urls: [{ permissionRecord: { table: 'block', id: fileId }, url: originalFileSource }],
+    });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    return Response.json({ signedUrls: [signed] });
+  });
+  const responses = await Promise.all([
+    handler(fileRequest(), f.env),
+    handler(fileRequest(), f.env),
+  ]);
+  for (const response of responses) {
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('Location'), signed);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  }
+  const injected = new Request(`${fileRequest().url}&url=https://evil.example/`);
+  assert.equal((await handler(injected, f.env)).status, 302);
+  assert.equal(calls, 1);
+});
+
+test('current publication is authorized before cached files, including deletion and private transitions', async () => {
+  const f = setup();
+  addFile(f);
+  await publishFiles(f);
+  let calls = 0;
+  const handler = api.createNotionFileHandler(async () => {
+    calls++;
+    return Response.json({ signedUrls: [freshUrl()] });
+  });
+  assert.equal((await handler(fileRequest(), f.env)).status, 302);
+  for (const request of [
+    fileRequest(draftId),
+    fileRequest(postId, childId),
+    fileRequest('bad-id'),
+    fileRequest(postId, fileId, 'POST'),
+  ]) {
+    assert.ok([404, 405].includes((await handler(request, f.env)).status));
+  }
+  assert.equal(calls, 1);
+  for (const page of Object.values(f.pages)) delete page.block[fileId];
+  await publishFiles(f);
+  assert.equal((await handler(fileRequest(), f.env)).status, 404);
+  addFile(f);
+  f.pages[postId].block[postId].value.properties.status = [['작성 중']];
+  await publishFiles(f);
+  assert.equal((await handler(fileRequest(), f.env)).status, 404);
+  assert.equal(calls, 1);
+  assert.equal(
+    (await api.worker.fetch(new Request('https://blog.example/api/notion-file'), f.env, {})).status,
+    404,
+  );
+});
+
+test('external sources and files owned by unpublished pages cannot use the signing endpoint', async () => {
+  const f = setup();
+  addFile(f, 'file', 'https://external.example/file.pdf');
+  await publishFiles(f);
+  const handler = api.createNotionFileHandler(() =>
+    assert.fail('must not sign unapproved sources'),
+  );
+  assert.equal((await handler(fileRequest(), f.env)).status, 404);
+  addFile(f);
+  // 공개 페이지의 recordMap에 섞인 비공개 페이지 파일도 허용하지 않는다.
+  for (const page of Object.values(f.pages)) page.block[fileId].value.parent_id = draftId;
+  await publishFiles(f);
+  assert.equal((await handler(fileRequest(), f.env)).status, 404);
+});
+
+test('signing failures and expired or foreign redirects fail closed and do not poison the cache', async () => {
+  const f = setup();
+  addFile(f);
+  await publishFiles(f);
+  for (const url of [
+    'https://evil.example/file',
+    'http://file.notion.so/file',
+    'https://file.notion.so.evil.example/file',
+    'https://file.notion.so/old?expirationTimestamp=1',
+    'https://s3.us-west-2.amazonaws.com/secure.notion-static.com/old?Expires=1',
+  ]) {
+    let calls = 0;
+    const handler = api.createNotionFileHandler(async () => {
+      calls++;
+      return Response.json({ signedUrls: [calls === 1 ? url : freshUrl()] });
+    });
+    const failed = await handler(fileRequest(), f.env);
+    assert.equal(failed.status, 503);
+    assert.equal(failed.headers.get('Cache-Control'), 'no-store');
+    assert.ok(!(await failed.text()).includes(url));
+    assert.equal((await handler(fileRequest(), f.env)).status, 302);
+    assert.equal(calls, 2);
+  }
+  const unavailable = api.createNotionFileHandler(
+    async () => new Response('upstream secret', { status: 429 }),
+  );
+  assert.equal((await unavailable(fileRequest(), f.env)).status, 503);
+  const networkError = api.createNotionFileHandler(async () => {
+    throw new Error('secret file URL');
+  });
+  assert.ok(!(await (await networkError(fileRequest(), f.env)).text()).includes('secret'));
+});
+
+test('a near-expiry signature is renewed before expiration and a new snapshot never reuses it', async () => {
+  const f = setup();
+  addFile(f);
+  await publishFiles(f);
+  let calls = 0;
+  const handler = api.createNotionFileHandler(async () => {
+    calls++;
+    return Response.json({
+      signedUrls: [
+        `https://file.notion.so/file?expirationTimestamp=${Date.now() + 35000}&signature=${calls}`,
+      ],
+    });
+  });
+  assert.equal((await handler(fileRequest(postId, fileId, 'HEAD'), f.env)).status, 302);
+  const originalNow = Date.now;
+  const now = originalNow();
+  Date.now = () => now + 6000;
+  try {
+    assert.equal((await handler(fileRequest(), f.env)).status, 302);
+  } finally {
+    Date.now = originalNow;
+  }
+  assert.equal(calls, 2);
+  await publishFiles(f);
+  assert.equal((await handler(fileRequest(), f.env)).status, 302);
+  assert.equal(calls, 3);
+});
+
+test('bootstrap snapshots support stable files and unrelated navigation pages cannot authorize them', async () => {
+  const f = setup();
+  addFile(f);
+  await publishFiles(f);
+  const prefix = api.contentStorePrefix(api.rootNotionPageId);
+  const base = `${prefix}/revisions/${f.env.BLOG_CONTENT_REVISION}`;
+  const fileKey = `pages/${postId.replace(/-/g, '')}.json`;
+  f.env.ASSETS.fetch = async request => {
+    const key = new URL(request.url).pathname.replace('/_blog-data/', '');
+    const value = f.values.get(`${base}/${key}`);
+    return new Response(value || '', { status: value ? 200 : 404 });
+  };
+  let calls = 0;
+  const handler = api.createNotionFileHandler(async () => {
+    calls++;
+    return Response.json({ signedUrls: [freshUrl()] });
+  });
+  delete f.env.BLOG_CONTENT_REVISION;
+  assert.equal((await handler(fileRequest(), f.env)).status, 302);
+  const saved = JSON.parse(f.values.get(`${base}/${fileKey}`));
+  const unrelated = '99999999-9999-4999-8999-999999999999';
+  saved.recordMap.block[unrelated] = {
+    value: { id: unrelated, type: 'page', parent_table: 'space' },
+  };
+  saved.recordMap.block[fileId].value.parent_id = unrelated;
+  f.values.set(`${base}/${fileKey}`, JSON.stringify(saved));
+  assert.equal((await handler(fileRequest(), f.env)).status, 404);
+  assert.equal(calls, 1);
 });

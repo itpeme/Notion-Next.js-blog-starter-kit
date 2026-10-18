@@ -1,6 +1,7 @@
-/** 빌드 후 실행: node scripts/content-refresh.integration.mjs [--live-notion]
+/** 빌드 후 실행: node scripts/content-refresh.integration.mjs [--live-notion] [--live-files]
  * workerd와 격리된 로컬 R2에서 실제 Next.js HTML/JSON 캐시 전환을 검증한다.
  * --live-notion은 Durable Object alarm의 실제 공개 Notion 수집까지 검증한다.
+ * --live-files는 실제 업로드 파일의 URL 재서명과 파일 응답을 검증한다.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -61,6 +62,36 @@ try {
   for (const entry of Object.values(newProps.recordMap.block)) {
     if (entry.value?.parent_id === originalId) entry.value.parent_id = newId;
   }
+  let uploaded;
+  for (const file of await fs.readdir(path.join(snapshot, 'pages'))) {
+    const saved = JSON.parse(await fs.readFile(path.join(snapshot, 'pages', file), 'utf8'));
+    uploaded = Object.values(saved.recordMap.block).find(
+      entry =>
+        entry.value?.type === 'image' &&
+        entry.value.properties?.source?.[0]?.[0]?.startsWith('attachment:'),
+    )?.value;
+    if (uploaded) break;
+  }
+  assert.ok(uploaded, 'a real uploaded file is available for fixture signing');
+  const fileId = uploaded.id;
+  const fileUrl = `/api/notion-file?${new URLSearchParams({
+    pageId: newId.replace(/-/g, ''),
+    blockId: fileId.replace(/-/g, ''),
+  })}`;
+  newProps.recordMap.block[fileId] = {
+    value: {
+      ...structuredClone(uploaded),
+      type: 'file',
+      parent_id: newId,
+      parent_table: 'block',
+      properties: { source: uploaded.properties.source, title: [['유효기간 검증 첨부파일']] },
+    },
+  };
+  main.value.content = [...(main.value.content || []), fileId];
+  newProps.recordMap.signed_urls = {
+    ...newProps.recordMap.signed_urls,
+    [fileId]: 'https://file.notion.so/expired?expirationTimestamp=1&signature=OLD',
+  };
   console.log('Checking bootstrap pages and authentication');
   await check('/admin');
   checkHomeLayout((await check('/')).body);
@@ -68,6 +99,7 @@ try {
   assert.ok(!originalPost.body.includes('class="home-sidebar"'), 'posts do not use home layout');
   await check('/소개');
   await check(`/${encoded}`, 404);
+  await check(fileUrl, 404);
   await check('/api/admin/refresh', 401, { method: 'POST' });
   for (const url of [
     '/_blog-data/index.json',
@@ -120,6 +152,27 @@ try {
   assert.equal(post.response.headers.get('X-Blog-Revision'), revision);
   assert.ok(post.body.includes('관리자 갱신 통합 검증 글'));
   assert.ok(post.body.includes(buildId), 'same Next.js build');
+  assert.ok(
+    post.body.includes(`href="${fileUrl.replace(/&/g, '&amp;')}"`),
+    'cached HTML contains a stable attachment link',
+  );
+  await check(fileUrl, 405, { method: 'POST' });
+  if (process.argv.includes('--live-files')) {
+    console.log('Re-signing an expired fixture URL using the actual public Notion file');
+    const file = await check(fileUrl, 302, { redirect: 'manual' });
+    assert.equal(file.response.headers.get('Cache-Control'), 'no-store');
+    const location = file.response.headers.get('Location');
+    const renewed = new URL(location);
+    assert.equal(renewed.protocol, 'https:');
+    if (renewed.searchParams.has('expirationTimestamp'))
+      assert.ok(Number(renewed.searchParams.get('expirationTimestamp')) > Date.now() + 30000);
+    const content = await fetch(location, {
+      headers: { Range: 'bytes=0-0' },
+      signal: AbortSignal.timeout(15000),
+    });
+    assert.ok(content.ok, `fresh signed file responds with HTTP ${content.status}`);
+    await content.body?.cancel();
+  }
   const home = await check('/');
   checkHomeLayout(home.body);
   assert.ok(home.body.includes('관리자 갱신 통합 검증 글'), 'home list refreshes');
@@ -132,6 +185,7 @@ try {
   await publishFixture(false);
   checkHomeLayout((await check('/')).body);
   await check(`/${encoded}`, 404);
+  await check(fileUrl, 404);
   await check(`/_next/data/${buildId}/${encoded}.json`, 404);
 
   if (process.argv.includes('--live-notion')) {
@@ -170,7 +224,7 @@ try {
     }
   }
   console.log(
-    'PASS: HTML, client navigation JSON, home, XML, private assets, and cache revision switch',
+    'PASS: HTML, client navigation JSON, home, XML, stable files, private assets, and cache revision switch',
   );
 } finally {
   const errors = server.getLogs().filter(log => log.level === 'error');

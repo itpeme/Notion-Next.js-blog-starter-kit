@@ -4,6 +4,8 @@ import type { ContentEnv, ContentPointer } from './lib/content-types';
 import { BOOTSTRAP_CONTENT_PATH, contentStorePrefix, revisionKey } from './lib/content-paths';
 import { rootNotionPageId } from './lib/config';
 import { handleAdminRefresh } from './lib/admin-refresh';
+import { handleNotionFile } from './lib/notion-file';
+import { NOTION_FILE_PATH } from './lib/notion-file-url';
 export { BlogRefreshJob } from './lib/content-refresh-job';
 
 export default {
@@ -54,6 +56,7 @@ export default {
           NEXT_INC_CACHE_R2_PREFIX: `${prefix}/html/${pointer.revision}`,
         }
       : { ...env };
+    if (pathname === NOTION_FILE_PATH) return handleNotionFile(request, runtimeEnv);
     const response = await handler.fetch(request, runtimeEnv, ctx);
     const headers = new Headers(response.headers);
     if (pointer) headers.set('X-Blog-Revision', pointer.revision);
