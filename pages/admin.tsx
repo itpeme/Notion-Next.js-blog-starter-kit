@@ -1,10 +1,12 @@
 import Head from 'next/head';
 import * as React from 'react';
 import type { RefreshStatus } from 'lib/content-types';
+import { useDarkMode } from 'lib/use-dark-mode';
 
 const ACTIVE = new Set(['queued', 'collecting', 'saving']);
 
 export default function AdminPage() {
+  const { toggleDarkMode } = useDarkMode();
   const [password, setPassword] = React.useState('');
   const [status, setStatus] = React.useState<RefreshStatus | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -70,9 +72,19 @@ export default function AdminPage() {
         <meta name="robots" content="noindex,nofollow" />
       </Head>
       <main className="admin-refresh">
-        <a href="/" className="home-link">
-          ← 블로그로 돌아가기
-        </a>
+        <div className="admin-toolbar">
+          <a href="/" className="home-link">
+            ← 블로그로 돌아가기
+          </a>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleDarkMode}
+            aria-label="라이트·다크 모드 전환"
+          >
+            테마 전환
+          </button>
+        </div>
         <h1>블로그 갱신</h1>
         <p>Notion에서 공개한 새 글과 수정 내용을 블로그에 반영합니다.</p>
         <form onSubmit={submit}>
@@ -120,21 +132,56 @@ export default function AdminPage() {
       </main>
       <style jsx>{`
         .admin-refresh {
+          --admin-muted: #5b6470;
+          --admin-link: #2865b1;
+          --admin-input: #ffffff;
+          --admin-border: #bac2cb;
+          --admin-status: #f0f6fc;
+          --admin-action: #2865b1;
+          --admin-action-text: #ffffff;
+          --admin-disabled: #e1e7ef;
+          --admin-disabled-text: #526174;
+          --admin-focus: #2865b1;
+          --admin-error: #b42318;
+          color-scheme: light;
+          color: var(--fg-color);
+          background: var(--bg-color);
           max-width: 620px;
           margin: 64px auto;
           padding: 28px;
           font-family: system-ui, sans-serif;
           line-height: 1.7;
         }
+        :global(body.dark-mode) .admin-refresh {
+          --admin-muted: #b8c4d2;
+          --admin-link: #91bfff;
+          --admin-input: #20252d;
+          --admin-border: #687788;
+          --admin-status: #232f40;
+          --admin-action: #8abaff;
+          --admin-action-text: #102137;
+          --admin-disabled: #303d50;
+          --admin-disabled-text: #bcc9d9;
+          --admin-focus: #8abaff;
+          --admin-error: #ffb4ab;
+          color-scheme: dark;
+        }
+        .admin-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
         h1 {
           font-size: 30px;
           margin: 24px 0 8px;
         }
         p {
-          color: #5b6470;
+          color: var(--admin-muted);
         }
         a {
-          color: #2865b1;
+          color: var(--admin-link);
         }
         form {
           display: grid;
@@ -146,16 +193,24 @@ export default function AdminPage() {
         }
         input {
           font: inherit;
+          color: inherit;
+          caret-color: currentColor;
+          background: var(--admin-input);
           padding: 10px 14px;
-          border: 1px solid #bac2cb;
+          border: 1px solid var(--admin-border);
           border-radius: 8px;
           min-width: 0;
+        }
+        input:disabled {
+          color: var(--admin-disabled-text);
+          background: var(--admin-disabled);
+          opacity: 1;
         }
         button {
           font: inherit;
           font-weight: 600;
-          color: white;
-          background: #2865b1;
+          color: var(--admin-action-text);
+          background: var(--admin-action);
           border: 0;
           border-radius: 8px;
           padding: 12px;
@@ -163,8 +218,23 @@ export default function AdminPage() {
           margin-top: 8px;
         }
         button:disabled {
-          opacity: 0.55;
+          color: var(--admin-disabled-text);
+          background: var(--admin-disabled);
           cursor: default;
+        }
+        a:focus-visible,
+        button:focus-visible,
+        input:focus-visible {
+          outline: 3px solid var(--admin-focus);
+          outline-offset: 3px;
+        }
+        .theme-toggle {
+          color: var(--admin-link);
+          background: transparent;
+          border: 1px solid var(--admin-border);
+          padding: 6px 12px;
+          margin-top: 0;
+          font-size: 14px;
         }
         .help {
           font-size: 14px;
@@ -173,14 +243,14 @@ export default function AdminPage() {
         .status {
           padding: 18px;
           border-radius: 10px;
-          background: #f0f6fc;
+          background: var(--admin-status);
           margin-top: 28px;
         }
         .status p {
           margin-bottom: 0;
         }
         .error {
-          color: #b42318;
+          color: var(--admin-error);
         }
         .home-link {
           font-size: 14px;
