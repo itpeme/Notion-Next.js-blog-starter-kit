@@ -19,7 +19,10 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
-    "run_worker_first": true
+    "run_worker_first": true,
+    // OpenNext 1.20.16+ 요구사항: 정적 파일은 정확한 경로로만 내보낸다(.html 추정·슬래시 보정 금지).
+    "html_handling": "none",
+    "not_found_handling": "none"
   },
   "services": [
     {
