@@ -19,8 +19,10 @@ export async function handleAdminRefresh(
   const secret = env.ADMIN_REFRESH_SECRET;
   if (!secret || secret.length < 32) return reply('관리자 비밀번호 설정이 필요합니다.', 503);
   const token = request.headers.get('authorization')?.replace(/^Bearer /, '') || '';
-  const supplied = Buffer.from(token);
-  const expected = Buffer.from(secret);
+  // Buffer 대신 Uint8Array 를 쓴다: @types/node 버전에 따라 Buffer 가 timingSafeEqual 인자 타입과 맞지 않는다.
+  const encoder = new TextEncoder();
+  const supplied = encoder.encode(token);
+  const expected = encoder.encode(secret);
   if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
     return reply('관리자 비밀번호를 확인해 주세요.', 401);
   }
